@@ -692,6 +692,7 @@ def set_elo(guild_id: int, user_id: int, valeur: int):
 SCENARIOS = [
     {
         "map": "Dry Season", "mode": "Gem Grab", "emoji_mode": "💎",
+        "img": "https://media.brawltime.ninja/maps/dry-season/map.png",
         "enemy": ["Leon", "Crow", "Piper"],
         "ally": ["Nani", "Bo"],
         "bans": ["Spike", "Sandy", "Tara", "Bea", "Jessie", "Gene"],
@@ -711,6 +712,7 @@ SCENARIOS = [
     },
     {
         "map": "Hard Rock Mine", "mode": "Gem Grab", "emoji_mode": "💎",
+        "img": "https://media.brawltime.ninja/maps/hard-rock-mine/map.png",
         "enemy": ["Spike", "Poco", "Frank"],
         "ally": ["8-Bit", "Pam"],
         "bans": ["Sandy", "Gene", "Tara", "Max", "Byron", "Squeak"],
@@ -730,6 +732,7 @@ SCENARIOS = [
     },
     {
         "map": "Kaboom Canyon", "mode": "Brawl Ball", "emoji_mode": "⚽",
+        "img": "https://media.brawltime.ninja/maps/kaboom-canyon/map.png",
         "enemy": ["El Primo", "Bull", "Frank"],
         "ally": ["Bibi", "Stu"],
         "bans": ["Leon", "Mortis", "Edgar", "Fang", "Buzz", "Sam"],
@@ -749,6 +752,7 @@ SCENARIOS = [
     },
     {
         "map": "Super Beach", "mode": "Brawl Ball", "emoji_mode": "⚽",
+        "img": "https://media.brawltime.ninja/maps/super-beach/map.png",
         "enemy": ["Piper", "Brock", "Nani"],
         "ally": ["Leon", "Mortis"],
         "bans": ["Sandy", "Spike", "Crow", "Carl", "Rico", "Surge"],
@@ -768,6 +772,7 @@ SCENARIOS = [
     },
     {
         "map": "Shooting Star", "mode": "Bounty", "emoji_mode": "⭐",
+        "img": "https://media.brawltime.ninja/maps/shooting-star/map.png",
         "enemy": ["Piper", "Bea", "Belle"],
         "ally": ["Leon", "Crow"],
         "bans": ["Spike", "Sandy", "Bo", "Nani", "Janet", "Angelo"],
@@ -787,6 +792,7 @@ SCENARIOS = [
     },
     {
         "map": "Snake Prairie", "mode": "Bounty", "emoji_mode": "⭐",
+        "img": "https://media.brawltime.ninja/maps/snake-prairie/map.png",
         "enemy": ["Crow", "Leon", "Mortis"],
         "ally": ["Spike", "Sandy"],
         "bans": ["Tara", "Gene", "Max", "Poco", "Byron", "Gale"],
@@ -806,6 +812,7 @@ SCENARIOS = [
     },
     {
         "map": "Belle's Rock", "mode": "Hot Zone", "emoji_mode": "🔥",
+        "img": "https://media.brawltime.ninja/maps/belles-rock/map.png",
         "enemy": ["Emz", "Gale", "Frank"],
         "ally": ["Max", "Poco"],
         "bans": ["Sandy", "Tara", "Spike", "Gene", "Byron", "Squeak"],
@@ -825,6 +832,7 @@ SCENARIOS = [
     },
     {
         "map": "Open Zone", "mode": "Hot Zone", "emoji_mode": "🔥",
+        "img": "https://media.brawltime.ninja/maps/open-zone/map.png",
         "enemy": ["Sandy", "Spike", "Amber"],
         "ally": ["Leon", "Crow"],
         "bans": ["Tara", "Gene", "Max", "Pam", "Poco", "Gale"],
@@ -844,6 +852,7 @@ SCENARIOS = [
     },
     {
         "map": "Parallel Plays", "mode": "Heist", "emoji_mode": "💰",
+        "img": "https://media.brawltime.ninja/maps/parallel-plays/map.png",
         "enemy": ["Brock", "Piper", "Dynamike"],
         "ally": ["Bull", "El Primo"],
         "bans": ["Spike", "Leon", "Crow", "Sandy", "Amber", "Surge"],
@@ -863,6 +872,7 @@ SCENARIOS = [
     },
     {
         "map": "Safe Zone", "mode": "Heist", "emoji_mode": "💰",
+        "img": "https://media.brawltime.ninja/maps/safe-zone/map.png",
         "enemy": ["Sprout", "Penny", "Jessie"],
         "ally": ["Surge", "Brock"],
         "bans": ["Leon", "Crow", "Amber", "Sandy", "Bull", "Darryl"],
@@ -882,6 +892,7 @@ SCENARIOS = [
     },
     {
         "map": "Flaring Phoenix", "mode": "Knockout", "emoji_mode": "💀",
+        "img": "https://media.brawltime.ninja/maps/flaring-phoenix/map.png",
         "enemy": ["Leon", "Buzz", "Edgar"],
         "ally": ["Piper", "Brock"],
         "bans": ["Crow", "Sandy", "Spike", "Mortis", "Fang", "Sam"],
@@ -901,6 +912,7 @@ SCENARIOS = [
     },
     {
         "map": "New Horizons", "mode": "Knockout", "emoji_mode": "💀",
+        "img": "https://media.brawltime.ninja/maps/new-horizons/map.png",
         "enemy": ["Piper", "Bea", "Nani"],
         "ally": ["Edgar", "Crow"],
         "bans": ["Leon", "Sandy", "Buzz", "Sam", "Fang", "Mortis"],
@@ -920,6 +932,7 @@ SCENARIOS = [
     },
     {
         "map": "Double Swoosh", "mode": "Brawl Ball", "emoji_mode": "⚽",
+        "img": "https://media.brawltime.ninja/maps/double-swoosh/map.png",
         "enemy": ["Sandy", "Emz", "Gale"],
         "ally": ["Frank", "Jacky"],
         "bans": ["Leon", "Mortis", "Buzz", "Edgar", "Sam", "Surge"],
@@ -939,6 +952,7 @@ SCENARIOS = [
     },
     {
         "map": "Minecart Madness", "mode": "Gem Grab", "emoji_mode": "💎",
+        "img": "https://media.brawltime.ninja/maps/minecart-madness/map.png",
         "enemy": ["Tara", "Gene", "Poco"],
         "ally": ["Spike", "Emz"],
         "bans": ["Sandy", "Max", "Byron", "Squeak", "Gale", "Bo"],
@@ -958,6 +972,7 @@ SCENARIOS = [
     },
     {
         "map": "Layer Cake", "mode": "Hot Zone", "emoji_mode": "🔥",
+        "img": "https://media.brawltime.ninja/maps/layer-cake/map.png",
         "enemy": ["Bull", "Rosa", "Jacky"],
         "ally": ["Piper", "Belle"],
         "bans": ["Sandy", "Tara", "Gene", "Max", "Poco", "Emz"],
@@ -977,6 +992,7 @@ SCENARIOS = [
     },
     {
         "map": "Center Stage", "mode": "Hot Zone", "emoji_mode": "🔥",
+        "img": "https://media.brawltime.ninja/maps/center-stage/map.png",
         "enemy": ["Max", "Byron", "Poco"],
         "ally": ["Emz", "Squeak"],
         "bans": ["Sandy", "Tara", "Gene", "Spike", "Gale", "Pam"],
@@ -996,6 +1012,7 @@ SCENARIOS = [
     },
     {
         "map": "Goldarm Gulch", "mode": "Heist", "emoji_mode": "💰",
+        "img": "https://media.brawltime.ninja/maps/goldarm-gulch/map.png",
         "enemy": ["Jacky", "Rosa", "Darryl"],
         "ally": ["Brock", "Dynamike"],
         "bans": ["Leon", "Crow", "Amber", "Sandy", "Bull", "El Primo"],
@@ -1015,6 +1032,7 @@ SCENARIOS = [
     },
     {
         "map": "Dueling Beetles", "mode": "Bounty", "emoji_mode": "⭐",
+        "img": "https://media.brawltime.ninja/maps/dueling-beetles/map.png",
         "enemy": ["Mortis", "Leon", "Buzz"],
         "ally": ["Bo", "Tick"],
         "bans": ["Sandy", "Spike", "Crow", "Emz", "Gale", "Carl"],
@@ -1034,6 +1052,7 @@ SCENARIOS = [
     },
     {
         "map": "Feast or Famine", "mode": "Bounty", "emoji_mode": "⭐",
+        "img": "https://media.brawltime.ninja/maps/feast-or-famine/map.png",
         "enemy": ["Dynamike", "Tick", "Sprout"],
         "ally": ["Mortis", "Crow"],
         "bans": ["Sandy", "Spike", "Bo", "Leon", "Piper", "Brock"],
@@ -1053,6 +1072,7 @@ SCENARIOS = [
     },
     {
         "map": "Chill Cave", "mode": "Gem Grab", "emoji_mode": "💎",
+        "img": "https://media.brawltime.ninja/maps/chill-cave/map.png",
         "enemy": ["Pam", "Frank", "Rosa"],
         "ally": ["Byron", "Squeak"],
         "bans": ["Sandy", "Tara", "Gene", "Max", "Poco", "Gale"],
@@ -1207,15 +1227,30 @@ async def draft_cmd(interaction: discord.Interaction):
     scenario = random.choice(SCENARIOS)
 
     embed = embed_scenario(scenario, interaction.user, elo_actuel)
-
-    # Image du best brawler en thumbnail
-    slug_best = nom_en_slug(scenario["top10"][0][0])
-    embed.set_thumbnail(url=f"https://media.brawltime.ninja/brawlers/{slug_best}/avatar.png")
-
+    embed = embed_scenario(scenario, interaction.user, elo_actuel)
     msg = await interaction.followup.send(embed=embed)
 
-    # Timer 30s avec deadline absolue
+    # Timer 30s avec mise à jour de l'embed toutes les 10s
     deadline = time.monotonic() + 30.0
+
+    async def update_timer():
+        for remaining_display in [20, 10]:
+            await asyncio.sleep(10)
+            if channel_id not in active_draft_games:
+                return
+            embed_timer = embed_scenario(scenario, interaction.user, elo_actuel)
+            embed_timer.description = (
+                embed_timer.description.replace(
+                    "Tu as **30 secondes** !",
+                    f"⏱️ Plus que **{remaining_display} secondes** !"
+                )
+            )
+            try:
+                await msg.edit(embed=embed_timer)
+            except Exception:
+                pass
+
+    timer_task = asyncio.create_task(update_timer())
 
     def check(m: discord.Message) -> bool:
         return (
@@ -1225,7 +1260,7 @@ async def draft_cmd(interaction: discord.Interaction):
         )
 
     reponse_finale = None
-    position_finale = -2  # -2 = timeout
+    position_finale = -2
 
     try:
         while True:
@@ -1239,6 +1274,7 @@ async def draft_cmd(interaction: discord.Interaction):
     except asyncio.TimeoutError:
         pass
 
+    timer_task.cancel()
     active_draft_games.pop(channel_id, None)
 
     # Calcul delta ELO
@@ -1267,9 +1303,6 @@ async def draft_cmd(interaction: discord.Interaction):
         delta,
         nouvel_elo,
     )
-
-    # Thumbnail = avatar du best pick
-    embed_res.set_thumbnail(url=f"https://media.brawltime.ninja/brawlers/{slug_best}/avatar.png")
 
     try:
         await msg.edit(embed=embed_res)
