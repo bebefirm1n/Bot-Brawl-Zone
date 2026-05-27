@@ -371,6 +371,29 @@ async def help_cmd(interaction: discord.Interaction, commande: str = None):
             "desc": "Affiche les 101 brawlers disponibles, triés par rareté.",
             "details": "Liste complète des brawlers avec leur rareté et rôle.",
         },
+        "draft": {
+            "emoji": "🏆",
+            "titre": "/draft",
+            "desc": "Lance une simulation de draft ranked Brawl Stars.",
+            "details": (
+                "Une situation de ranked est générée : map, bans, picks ennemis et alliés.\n"
+                "Tu as **30 secondes** pour taper le meilleur last pick.\n"
+                "Le bot révèle ensuite le meilleur pick, son explication et le top 10 avec winrates.\n"
+                "Ton **ELO** monte ou descend selon la qualité de ta réponse."
+            ),
+        },
+        "draft-elo": {
+            "emoji": "📊",
+            "titre": "/draft-elo",
+            "desc": "Affiche ton ELO et ton rang actuel en Draft Ranked.",
+            "details": "Montre ton rang, ton ELO, ta position dans le classement serveur et le barème de gains/pertes.",
+        },
+        "draft-classement": {
+            "emoji": "🏅",
+            "titre": "/draft-classement",
+            "desc": "Affiche le top 10 des joueurs en Draft Ranked sur le serveur.",
+            "details": "Classement par ELO avec rang affiché pour chaque joueur.",
+        },
         "ping": {
             "emoji": "🏓",
             "titre": "/ping",
@@ -436,7 +459,10 @@ async def help_cmd(interaction: discord.Interaction, commande: str = None):
         name="🎮 Mini-jeux",
         value=(
             "`/brawler` — Devine le brawler caché !\n"
-            "`/brawler_liste` — Liste des 101 brawlers"
+            "`/brawler_liste` — Liste des 101 brawlers\n"
+            "`/draft` — Entraîne-toi au draft ranked !\n"
+            "`/draft-elo` — Ton ELO et ton rang\n"
+            "`/draft-classement` — Top joueurs du serveur"
         ),
         inline=False,
     )
@@ -612,9 +638,717 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
 
+
 # ═══════════════════════════════════════════════════════════
-#  LANCEMENT
+#  MINI-JEU : DRAFT RANKED
 # ═══════════════════════════════════════════════════════════
+
+# Système ELO par serveur/utilisateur
+draft_elo: dict[int, dict[int, int]] = {}
+active_draft_games: dict[int, bool] = {}
+
+RANGS_ELO = [
+    (0,    "🥉 Bronze I"),
+    (100,  "🥉 Bronze II"),
+    (200,  "🥉 Bronze III"),
+    (300,  "🥈 Silver I"),
+    (400,  "🥈 Silver II"),
+    (500,  "🥈 Silver III"),
+    (600,  "🏅 Gold I"),
+    (700,  "🏅 Gold II"),
+    (800,  "🏅 Gold III"),
+    (900,  "💎 Diamond I"),
+    (1000, "💎 Diamond II"),
+    (1100, "💎 Diamond III"),
+    (1200, "💜 Mythic I"),
+    (1300, "💜 Mythic II"),
+    (1400, "💜 Mythic III"),
+    (1500, "🌟 Legendary I"),
+    (1600, "🌟 Legendary II"),
+    (1700, "🌟 Legendary III"),
+    (1800, "👑 Masters"),
+]
+
+
+def get_rang(elo: int) -> str:
+    rang = RANGS_ELO[0][1]
+    for seuil, nom in RANGS_ELO:
+        if elo >= seuil:
+            rang = nom
+    return rang
+
+
+def get_elo(guild_id: int, user_id: int) -> int:
+    return draft_elo.get(guild_id, {}).get(user_id, 0)
+
+
+def set_elo(guild_id: int, user_id: int, valeur: int):
+    if guild_id not in draft_elo:
+        draft_elo[guild_id] = {}
+    draft_elo[guild_id][user_id] = max(0, valeur)
+
+
+SCENARIOS = [
+    {
+        "map": "Dry Season", "mode": "Gem Grab", "emoji_mode": "💎",
+        "enemy": ["Leon", "Crow", "Piper"],
+        "ally": ["Nani", "Bo"],
+        "bans": ["Spike", "Sandy", "Tara", "Bea", "Jessie", "Gene"],
+        "top10": [
+            ("Max", 61.2), ("Byron", 58.7), ("Poco", 57.4),
+            ("Gale", 55.1), ("Frank", 54.8), ("Bull", 53.9),
+            ("8-Bit", 53.2), ("Pam", 52.7), ("Rosa", 51.8), ("Darryl", 51.3),
+        ],
+        "best": "Max",
+        "explication": (
+            "**Max** est le meilleur pick ici pour plusieurs raisons :\n"
+            "• Son super booste toute l'équipe (Nani + Bo), crucial sur une map ouverte\n"
+            "• Elle contre Leon et Crow grâce à sa mobilité et son aura de vitesse\n"
+            "• Piper est peu dangereuse si Max se déplace constamment\n"
+            "• Elle sécurise les gemmes et roam facilement sur Dry Season"
+        ),
+    },
+    {
+        "map": "Hard Rock Mine", "mode": "Gem Grab", "emoji_mode": "💎",
+        "enemy": ["Spike", "Poco", "Frank"],
+        "ally": ["8-Bit", "Pam"],
+        "bans": ["Sandy", "Gene", "Tara", "Max", "Byron", "Squeak"],
+        "top10": [
+            ("Gale", 62.3), ("Emz", 60.1), ("Jessie", 58.4),
+            ("Bo", 57.2), ("Tick", 55.8), ("Nani", 54.6),
+            ("Rico", 53.9), ("Carl", 53.1), ("Dynamike", 52.7), ("Brock", 52.0),
+        ],
+        "best": "Gale",
+        "explication": (
+            "**Gale** est parfait sur Hard Rock Mine :\n"
+            "• Son super repousse Frank hors de la mine, empêchant les gemmes\n"
+            "• Il counter Poco en zone centrale grâce à son push\n"
+            "• Synergy avec 8-Bit (range + zone control)\n"
+            "• Spike est déjà ennemi donc Gale peut bloquer ses attaques en piquant"
+        ),
+    },
+    {
+        "map": "Kaboom Canyon", "mode": "Brawl Ball", "emoji_mode": "⚽",
+        "enemy": ["El Primo", "Bull", "Frank"],
+        "ally": ["Bibi", "Stu"],
+        "bans": ["Leon", "Mortis", "Edgar", "Fang", "Buzz", "Sam"],
+        "top10": [
+            ("Rosa", 63.5), ("Darryl", 61.2), ("Jacky", 59.8),
+            ("Carl", 58.3), ("Surge", 57.1), ("Rico", 56.4),
+            ("Brock", 55.9), ("Dynamike", 55.2), ("Tick", 54.7), ("Grom", 53.8),
+        ],
+        "best": "Rosa",
+        "explication": (
+            "**Rosa** est le meilleur last pick sur Kaboom Canyon :\n"
+            "• Son super la rend invincible 3 secondes — parfait face à El Primo + Bull + Frank\n"
+            "• Elle peut porter le ballon seule grâce à sa résistance\n"
+            "• Synergy avec Bibi (combo mêlée robuste) et Stu (vitesse + fuite)\n"
+            "• Les couloirs étroits avantagent les tanks, et Rosa est la meilleure option disponible"
+        ),
+    },
+    {
+        "map": "Super Beach", "mode": "Brawl Ball", "emoji_mode": "⚽",
+        "enemy": ["Piper", "Brock", "Nani"],
+        "ally": ["Leon", "Mortis"],
+        "bans": ["Sandy", "Spike", "Crow", "Carl", "Rico", "Surge"],
+        "top10": [
+            ("Darryl", 64.1), ("Bull", 62.7), ("El Primo", 61.3),
+            ("Rosa", 59.8), ("Bibi", 58.4), ("Jacky", 57.6),
+            ("Frank", 56.9), ("Buzz", 55.3), ("Fang", 54.8), ("Stu", 53.7),
+        ],
+        "best": "Darryl",
+        "explication": (
+            "**Darryl** est idéal pour compléter cette compo :\n"
+            "• Son roll permet de passer sous les tirs de Piper, Brock et Nani\n"
+            "• Combo parfait avec Leon et Mortis : trois assassins rapides\n"
+            "• Super chargeable rapidement pour enchaîner les attaques au but\n"
+            "• Super Beach est une map ouverte — Darryl peut rouler en diagonale et surprendre"
+        ),
+    },
+    {
+        "map": "Shooting Star", "mode": "Bounty", "emoji_mode": "⭐",
+        "enemy": ["Piper", "Bea", "Belle"],
+        "ally": ["Leon", "Crow"],
+        "bans": ["Spike", "Sandy", "Bo", "Nani", "Janet", "Angelo"],
+        "top10": [
+            ("Carl", 63.8), ("Gale", 61.5), ("Emz", 60.2),
+            ("Dynamike", 58.9), ("Tick", 57.4), ("Brock", 56.8),
+            ("8-Bit", 55.3), ("Rico", 54.7), ("Stu", 53.9), ("Edgar", 52.6),
+        ],
+        "best": "Carl",
+        "explication": (
+            "**Carl** est le meilleur last pick en Bounty ici :\n"
+            "• Son attaque perce et touche Piper/Bea/Belle derrière les buissons\n"
+            "• Il résiste mieux que la plupart face aux snipers avec ses 4400 PV\n"
+            "• Combo avec Leon + Crow : Carl occupe le centre pendant qu'ils flanquent\n"
+            "• Son super lui permet de fuir quand il est ciblé, préservant l'étoile bonus"
+        ),
+    },
+    {
+        "map": "Snake Prairie", "mode": "Bounty", "emoji_mode": "⭐",
+        "enemy": ["Crow", "Leon", "Mortis"],
+        "ally": ["Spike", "Sandy"],
+        "bans": ["Tara", "Gene", "Max", "Poco", "Byron", "Gale"],
+        "top10": [
+            ("Bo", 64.5), ("Tick", 62.1), ("Dynamike", 60.8),
+            ("Sprout", 59.3), ("Jessie", 57.9), ("Penny", 56.4),
+            ("Bea", 55.8), ("Piper", 55.1), ("Nani", 54.3), ("8-Bit", 53.6),
+        ],
+        "best": "Bo",
+        "explication": (
+            "**Bo** est le choix parfait sur Snake Prairie :\n"
+            "• Ses mines cachées dans les buissons contrent Leon/Crow/Mortis qui s'en approchent\n"
+            "• Il révèle les ennemis cachés avec son super, parfait contre Leon\n"
+            "• Synergy Spike + Sandy + Bo : zone control totale du terrain\n"
+            "• Snake Prairie a beaucoup de buissons — les mines de Bo sont dévastatrices"
+        ),
+    },
+    {
+        "map": "Belle's Rock", "mode": "Hot Zone", "emoji_mode": "🔥",
+        "enemy": ["Emz", "Gale", "Frank"],
+        "ally": ["Max", "Poco"],
+        "bans": ["Sandy", "Tara", "Spike", "Gene", "Byron", "Squeak"],
+        "top10": [
+            ("Pam", 62.9), ("Rosa", 60.4), ("Jacky", 58.7),
+            ("Bull", 57.3), ("Darryl", 56.1), ("Bibi", 55.4),
+            ("Ash", 54.8), ("Sam", 53.7), ("Buzz", 52.9), ("Buster", 52.1),
+        ],
+        "best": "Pam",
+        "explication": (
+            "**Pam** est le meilleur last pick sur Belle's Rock :\n"
+            "• Sa tourelle soigne Max et Poco en permanence sur la zone à tenir\n"
+            "• Elle résiste aux dégâts de zone d'Emz et Gale grâce à ses 7200 PV\n"
+            "• Son attaque à dispersion nettoie la zone rapidement\n"
+            "• La synergie Pam + Poco + Max crée une équipe quasi inarrêtable sur zone"
+        ),
+    },
+    {
+        "map": "Open Zone", "mode": "Hot Zone", "emoji_mode": "🔥",
+        "enemy": ["Sandy", "Spike", "Amber"],
+        "ally": ["Leon", "Crow"],
+        "bans": ["Tara", "Gene", "Max", "Pam", "Poco", "Gale"],
+        "top10": [
+            ("Emz", 63.2), ("Squeak", 61.8), ("Tick", 60.5),
+            ("Dynamike", 58.9), ("Sprout", 57.4), ("Bo", 56.8),
+            ("Penny", 55.3), ("Jessie", 54.6), ("Brock", 53.9), ("Rico", 52.7),
+        ],
+        "best": "Emz",
+        "explication": (
+            "**Emz** est excellente sur Open Zone contre cette compo :\n"
+            "• Son attaque zone ralentit Sandy/Spike/Amber qui veulent tenir la zone\n"
+            "• Super instantané qui couvre toute une zone et contre le sommeil de Sandy\n"
+            "• Synergy Leon + Crow + Emz : les trois contrôlent le terrain\n"
+            "• Elle peut charger son super très vite sur la zone centrale ouverte"
+        ),
+    },
+    {
+        "map": "Parallel Plays", "mode": "Heist", "emoji_mode": "💰",
+        "enemy": ["Brock", "Piper", "Dynamike"],
+        "ally": ["Bull", "El Primo"],
+        "bans": ["Spike", "Leon", "Crow", "Sandy", "Amber", "Surge"],
+        "top10": [
+            ("Darryl", 64.8), ("Jacky", 62.3), ("Rosa", 60.9),
+            ("Frank", 59.4), ("Ash", 58.1), ("Sam", 57.6),
+            ("Bibi", 56.2), ("Buzz", 55.8), ("Edgar", 54.3), ("Mortis", 53.7),
+        ],
+        "best": "Darryl",
+        "explication": (
+            "**Darryl** est parfait pour cette compo Heist :\n"
+            "• Son roll lui permet de traverser le terrain et atteindre le coffre rapidement\n"
+            "• Il résiste aux snipers (Brock/Piper) grâce à sa mobilité\n"
+            "• Combo dévastateur avec Bull + El Primo : trois tanks sur le coffre\n"
+            "• Sur Parallel Plays, les couloirs avantagent les rush — Darryl excelle"
+        ),
+    },
+    {
+        "map": "Safe Zone", "mode": "Heist", "emoji_mode": "💰",
+        "enemy": ["Sprout", "Penny", "Jessie"],
+        "ally": ["Surge", "Brock"],
+        "bans": ["Leon", "Crow", "Amber", "Sandy", "Bull", "Darryl"],
+        "top10": [
+            ("Dynamike", 63.1), ("Tick", 61.4), ("Grom", 60.2),
+            ("Barley", 58.9), ("Emz", 57.3), ("Rico", 56.1),
+            ("8-Bit", 55.4), ("Nani", 54.8), ("Carl", 53.9), ("Piper", 52.7),
+        ],
+        "best": "Dynamike",
+        "explication": (
+            "**Dynamike** est le meilleur last pick ici :\n"
+            "• Il détruit les murs de Sprout pour ouvrir le chemin au coffre\n"
+            "• Ses bombes passent par-dessus les tourelles de Penny et Jessie\n"
+            "• Combo avec Surge + Brock : triple zone de dégâts à distance\n"
+            "• Son super hyper bombe peut éliminer plusieurs tourelles en une fois"
+        ),
+    },
+    {
+        "map": "Flaring Phoenix", "mode": "Knockout", "emoji_mode": "💀",
+        "enemy": ["Leon", "Buzz", "Edgar"],
+        "ally": ["Piper", "Brock"],
+        "bans": ["Crow", "Sandy", "Spike", "Mortis", "Fang", "Sam"],
+        "top10": [
+            ("Belle", 65.3), ("Nani", 63.8), ("Bo", 62.1),
+            ("Bea", 60.7), ("Janet", 59.4), ("Angelo", 58.8),
+            ("Carl", 57.3), ("Gale", 56.9), ("Rico", 55.4), ("8-Bit", 54.2),
+        ],
+        "best": "Belle",
+        "explication": (
+            "**Belle** est le meilleur last pick en Knockout :\n"
+            "• Son super marque les ennemis pour +30% dégâts — parfait avec Piper + Brock\n"
+            "• Elle contre Leon avec ses ricochets qui révèlent sa position\n"
+            "• Buzz et Edgar sont trop mobiles pour Piper seule — Belle les ralentit\n"
+            "• Triple sniper (Piper + Brock + Belle) = domination totale à distance"
+        ),
+    },
+    {
+        "map": "New Horizons", "mode": "Knockout", "emoji_mode": "💀",
+        "enemy": ["Piper", "Bea", "Nani"],
+        "ally": ["Edgar", "Crow"],
+        "bans": ["Leon", "Sandy", "Buzz", "Sam", "Fang", "Mortis"],
+        "top10": [
+            ("Darryl", 64.7), ("Bull", 62.9), ("El Primo", 61.4),
+            ("Buzz", 60.1), ("Stu", 58.6), ("Carl", 57.3),
+            ("Jacky", 56.8), ("Rosa", 55.4), ("Bibi", 54.1), ("Frank", 52.9),
+        ],
+        "best": "Darryl",
+        "explication": (
+            "**Darryl** est idéal pour counter cette compo sniper :\n"
+            "• Son roll peut traverser toute la map et one-shot Piper/Bea/Nani\n"
+            "• Synergy Edgar + Crow + Darryl : trois assassins rapides\n"
+            "• Avec deux assassins déjà dans la compo, les snipers ennemis sont en danger\n"
+            "• Son bouclier naturel lui permet de survivre au burst initial de Nani"
+        ),
+    },
+    {
+        "map": "Double Swoosh", "mode": "Brawl Ball", "emoji_mode": "⚽",
+        "enemy": ["Sandy", "Emz", "Gale"],
+        "ally": ["Frank", "Jacky"],
+        "bans": ["Leon", "Mortis", "Buzz", "Edgar", "Sam", "Surge"],
+        "top10": [
+            ("Bibi", 63.4), ("El Primo", 61.9), ("Bull", 60.3),
+            ("Darryl", 58.7), ("Rosa", 57.4), ("Ash", 56.1),
+            ("Buster", 55.8), ("Stu", 54.3), ("Carl", 53.7), ("Rico", 52.1),
+        ],
+        "best": "Bibi",
+        "explication": (
+            "**Bibi** complète parfaitement cette compo :\n"
+            "• Son bouclier personnel la protège du contrôle de masse de Sandy/Emz/Gale\n"
+            "• Elle peut repousser les ennemis avec son swing pour dégager la voie au but\n"
+            "• Combo Frank + Jacky + Bibi = trois tanks durs à arrêter\n"
+            "• Son super balle rebondissante traverse les zones de contrôle ennemies"
+        ),
+    },
+    {
+        "map": "Minecart Madness", "mode": "Gem Grab", "emoji_mode": "💎",
+        "enemy": ["Tara", "Gene", "Poco"],
+        "ally": ["Spike", "Emz"],
+        "bans": ["Sandy", "Max", "Byron", "Squeak", "Gale", "Bo"],
+        "top10": [
+            ("Leon", 64.2), ("Crow", 62.7), ("Mortis", 61.1),
+            ("Buzz", 59.8), ("Fang", 58.4), ("Edgar", 57.6),
+            ("Sam", 56.3), ("Stu", 55.7), ("Carl", 54.1), ("Darryl", 52.9),
+        ],
+        "best": "Leon",
+        "explication": (
+            "**Leon** est excellent ici pour counter Tara + Gene :\n"
+            "• Invisible, il peut voler les gemmes au gemeur de Tara sans risque\n"
+            "• Gene ne peut pas l'attraper facilement si Leon est camouflé\n"
+            "• Il contre Poco en l'éliminant rapidement avant les soins\n"
+            "• Synergy Spike + Emz + Leon : dégâts zone + assassin invisible"
+        ),
+    },
+    {
+        "map": "Layer Cake", "mode": "Hot Zone", "emoji_mode": "🔥",
+        "enemy": ["Bull", "Rosa", "Jacky"],
+        "ally": ["Piper", "Belle"],
+        "bans": ["Sandy", "Tara", "Gene", "Max", "Poco", "Emz"],
+        "top10": [
+            ("Brock", 63.9), ("Dynamike", 62.4), ("Tick", 60.8),
+            ("Sprout", 59.3), ("Grom", 58.1), ("Penny", 56.7),
+            ("Nani", 55.4), ("Angelo", 54.8), ("Gale", 53.2), ("Bo", 52.6),
+        ],
+        "best": "Brock",
+        "explication": (
+            "**Brock** complète parfaitement ce triple sniper :\n"
+            "• Ses fusées détruisent les murs pour empêcher Bull/Rosa/Jacky de se couvrir\n"
+            "• Il peut tenir la zone à distance sans jamais s'approcher des tanks\n"
+            "• Triple longue portée (Piper + Belle + Brock) = les tanks ne peuvent pas avancer\n"
+            "• Son super Rocktoberfest nettoie une zone entière quand les tanks s'amassent"
+        ),
+    },
+    {
+        "map": "Center Stage", "mode": "Hot Zone", "emoji_mode": "🔥",
+        "enemy": ["Max", "Byron", "Poco"],
+        "ally": ["Emz", "Squeak"],
+        "bans": ["Sandy", "Tara", "Gene", "Spike", "Gale", "Pam"],
+        "top10": [
+            ("Frank", 62.8), ("Rosa", 61.3), ("Jacky", 59.7),
+            ("Bull", 58.4), ("Ash", 57.1), ("Darryl", 56.3),
+            ("Buster", 55.8), ("Sam", 54.2), ("Buzz", 53.6), ("El Primo", 52.9),
+        ],
+        "best": "Frank",
+        "explication": (
+            "**Frank** est le meilleur last pick ici :\n"
+            "• Son super étourdit toute l'équipe Max/Byron/Poco groupée sur la zone\n"
+            "• Il résiste aux dégâts continus de ce trio grâce à ses 10200 PV\n"
+            "• Synergy Emz + Squeak + Frank : zone control + tank indestructible\n"
+            "• Une fois étourdi, Max ne peut plus booster l'équipe ennemie"
+        ),
+    },
+    {
+        "map": "Goldarm Gulch", "mode": "Heist", "emoji_mode": "💰",
+        "enemy": ["Jacky", "Rosa", "Darryl"],
+        "ally": ["Brock", "Dynamike"],
+        "bans": ["Leon", "Crow", "Amber", "Sandy", "Bull", "El Primo"],
+        "top10": [
+            ("Piper", 63.7), ("Nani", 62.1), ("Belle", 60.8),
+            ("Angelo", 59.4), ("Janet", 58.2), ("Grom", 57.6),
+            ("Tick", 56.3), ("Penny", 55.1), ("Sprout", 53.8), ("8-Bit", 52.4),
+        ],
+        "best": "Piper",
+        "explication": (
+            "**Piper** est le meilleur last pick sur Goldarm Gulch :\n"
+            "• Elle peut sniper Jacky/Rosa/Darryl dès qu'ils sortent de leur base\n"
+            "• Triple artillerie (Brock + Dynamike + Piper) = le coffre ennemi s'effondre\n"
+            "• Son super lui permet de fuir les charges de Darryl\n"
+            "• Les longues lignes droites de Goldarm Gulch maximisent sa portée"
+        ),
+    },
+    {
+        "map": "Dueling Beetles", "mode": "Bounty", "emoji_mode": "⭐",
+        "enemy": ["Mortis", "Leon", "Buzz"],
+        "ally": ["Bo", "Tick"],
+        "bans": ["Sandy", "Spike", "Crow", "Emz", "Gale", "Carl"],
+        "top10": [
+            ("Piper", 64.3), ("Belle", 62.8), ("Nani", 61.4),
+            ("Janet", 60.1), ("Angelo", 58.7), ("Brock", 57.3),
+            ("Bea", 56.8), ("8-Bit", 55.2), ("Rico", 54.6), ("Dynamike", 53.1),
+        ],
+        "best": "Piper",
+        "explication": (
+            "**Piper** est parfaite pour counter Mortis + Leon + Buzz :\n"
+            "• Elle peut éliminer Leon/Buzz en 2 tirs avant qu'ils approchent\n"
+            "• Mortis ne peut pas la rush facilement avec les mines de Bo partout\n"
+            "• Synergy Bo + Tick + Piper : zone control + sniper = triple protection\n"
+            "• Sur Dueling Beetles, les buissons de Bo bloquent les approches des assassins"
+        ),
+    },
+    {
+        "map": "Feast or Famine", "mode": "Bounty", "emoji_mode": "⭐",
+        "enemy": ["Dynamike", "Tick", "Sprout"],
+        "ally": ["Mortis", "Crow"],
+        "bans": ["Sandy", "Spike", "Bo", "Leon", "Piper", "Brock"],
+        "top10": [
+            ("Buzz", 63.9), ("Edgar", 62.4), ("Fang", 61.1),
+            ("Sam", 59.7), ("Stu", 58.3), ("Darryl", 57.6),
+            ("El Primo", 56.2), ("Bull", 54.8), ("Carl", 53.4), ("Bibi", 52.1),
+        ],
+        "best": "Buzz",
+        "explication": (
+            "**Buzz** est le meilleur last pick ici :\n"
+            "• Son super instantané lui permet de plonger sur Dynamike/Tick/Sprout sans risque\n"
+            "• Il charge son super très vite en attaquant les bombes de Tick\n"
+            "• Synergy Mortis + Crow + Buzz : trois assassins qui éliminent les lanceurs\n"
+            "• Sur Feast or Famine, les ressources centrales attirent les ennemis — Buzz punit ça"
+        ),
+    },
+    {
+        "map": "Chill Cave", "mode": "Gem Grab", "emoji_mode": "💎",
+        "enemy": ["Pam", "Frank", "Rosa"],
+        "ally": ["Byron", "Squeak"],
+        "bans": ["Sandy", "Tara", "Gene", "Max", "Poco", "Gale"],
+        "top10": [
+            ("Spike", 65.1), ("Amber", 63.6), ("Emz", 62.2),
+            ("Dynamike", 60.8), ("Tick", 59.3), ("Sprout", 58.1),
+            ("Brock", 56.7), ("Grom", 55.4), ("Penny", 54.2), ("Bo", 52.8),
+        ],
+        "best": "Spike",
+        "explication": (
+            "**Spike** est imbattable sur Chill Cave contre ce trio :\n"
+            "• Ses épines ralentissent Pam/Frank/Rosa qui veulent tenir la mine\n"
+            "• Il empoisonne la zone, rendant impossible de garder les gemmes\n"
+            "• Synergy Byron + Squeak + Spike : dégâts persistants + zone control\n"
+            "• Son super crée une barrière d'épines qui bloque les tanks de la mine"
+        ),
+    },
+]
+
+
+def normaliser_draft(texte: str) -> str:
+    texte = texte.lower().strip()
+    texte = "".join(c for c in texte if c.isalnum() or c in " -.")
+    return texte.strip()
+
+
+def trouver_brawler_draft(reponse: str, scenario: dict) -> int:
+    """Retourne la position dans le top10 (0-indexé), ou -1 si absent."""
+    rep = normaliser_draft(reponse)
+    for i, (nom, _) in enumerate(scenario["top10"]):
+        if normaliser_draft(nom) == rep:
+            return i
+        # Alias simples
+        if rep in normaliser_draft(nom) or normaliser_draft(nom) in rep:
+            return i
+    return -1
+
+
+def barre_winrate(wr: float) -> str:
+    """Génère une barre visuelle pour le winrate."""
+    filled = round((wr - 50) / 20 * 8)
+    filled = max(0, min(8, filled))
+    return "█" * filled + "░" * (8 - filled)
+
+
+def embed_scenario(scenario: dict, user: discord.Member, elo: int) -> discord.Embed:
+    """Crée l'embed de la situation de draft."""
+    embed = discord.Embed(
+        title=f"🏆 Draft Ranked — {scenario['map']}",
+        description=(
+            f"**Mode :** {scenario['emoji_mode']} {scenario['mode']}\n"
+            f"**Ton rang :** {get_rang(elo)} `({elo} ELO)`\n\n"
+            "Quel est le **meilleur last pick** pour ton équipe ?\n"
+            "Tape le nom dans le chat. Tu as **30 secondes** !"
+        ),
+        color=0xFFD700,
+    )
+    embed.add_field(
+        name="🔴 Équipe ennemie",
+        value=" • ".join(f"`{b}`" for b in scenario["enemy"]),
+        inline=False,
+    )
+    ally_str = " • ".join(f"`{b}`" for b in scenario["ally"]) + " • `❓ Last pick`"
+    embed.add_field(name="🔵 Ton équipe", value=ally_str, inline=False)
+    embed.add_field(
+        name="🚫 Bans",
+        value=" • ".join(f"~~{b}~~" for b in scenario["bans"]),
+        inline=False,
+    )
+    embed.set_footer(
+        text=f"Brawl Zone • Draft Ranked | Bonne chance {user.display_name} !"
+    )
+    return embed
+
+
+def embed_resultat(scenario: dict, reponse: str, position: int, delta_elo: int, nouvel_elo: int) -> discord.Embed:
+    """Crée l'embed du résultat après la réponse."""
+    best = scenario["top10"][0][0]
+
+    if position == 0:
+        couleur = 0x00FF88
+        titre = "🎯 Pick parfait !"
+        desc = f"Tu as trouvé le meilleur pick : **{best}** ! `+{delta_elo} ELO`"
+    elif 0 < position <= 2:
+        couleur = 0x4FC3F7
+        titre = f"✅ Bon pick ! (Top {position + 1})"
+        desc = f"Tu as joué **{reponse}** (#{position + 1}) ! Le meilleur était **{best}**. `+{delta_elo} ELO`"
+    elif 0 < position <= 4:
+        couleur = 0xFFD700
+        titre = f"🟡 Pick correct (Top {position + 1})"
+        desc = f"Tu as joué **{reponse}** (#{position + 1}). Le meilleur était **{best}**. `+{delta_elo} ELO`"
+    elif position > 4:
+        couleur = 0xFF7043
+        titre = f"🟠 Pick discutable (Top {position + 1})"
+        desc = f"Tu as joué **{reponse}** (#{position + 1}). Le meilleur était **{best}**. `{delta_elo} ELO`"
+    elif position == -2:
+        couleur = 0xFF4444
+        titre = "⏰ Temps écoulé !"
+        desc = f"Le meilleur pick était **{best}**. `{delta_elo} ELO`"
+    else:
+        couleur = 0xFF4444
+        titre = "❌ Pick non reconnu"
+        desc = f"**{reponse}** n'est pas dans le top 10. Le meilleur était **{best}**. `{delta_elo} ELO`"
+
+    embed = discord.Embed(title=titre, description=desc, color=couleur)
+
+    # Explication
+    embed.add_field(
+        name=f"💡 Pourquoi {best} ?",
+        value=scenario["explication"],
+        inline=False,
+    )
+
+    # Top 10
+    top_lines = []
+    for i, (nom, wr) in enumerate(scenario["top10"]):
+        medaille = ["🥇", "🥈", "🥉"][i] if i < 3 else f"`#{i + 1}`"
+        barre = barre_winrate(wr)
+        top_lines.append(f"{medaille} **{nom}** `{barre}` {wr}%")
+    embed.add_field(
+        name="📊 Top 10 — Winrates (Power League)",
+        value="\n".join(top_lines),
+        inline=False,
+    )
+
+    embed.add_field(
+        name="📈 Ton ELO",
+        value=f"{get_rang(nouvel_elo)} — `{nouvel_elo} ELO`",
+        inline=False,
+    )
+    embed.set_footer(text="Brawl Zone • Draft Ranked")
+    return embed
+
+
+@arbre.command(name="draft", description="Entraîne-toi au draft ranked Brawl Stars !")
+async def draft_cmd(interaction: discord.Interaction):
+    channel_id = interaction.channel_id
+
+    if active_draft_games.get(channel_id):
+        await interaction.response.send_message(
+            "❌ Une partie Draft est déjà en cours dans ce salon !",
+            ephemeral=True,
+        )
+        return
+
+    active_draft_games[channel_id] = True
+    await interaction.response.defer()
+
+    gid = interaction.guild_id
+    uid = interaction.user.id
+    elo_actuel = get_elo(gid, uid)
+    scenario = random.choice(SCENARIOS)
+
+    embed = embed_scenario(scenario, interaction.user, elo_actuel)
+
+    # Image du best brawler en thumbnail
+    slug_best = nom_en_slug(scenario["top10"][0][0])
+    embed.set_thumbnail(url=f"https://media.brawltime.ninja/brawlers/{slug_best}/avatar.png")
+
+    msg = await interaction.followup.send(embed=embed)
+
+    # Timer 30s avec deadline absolue
+    deadline = time.monotonic() + 30.0
+
+    def check(m: discord.Message) -> bool:
+        return (
+            m.channel.id == channel_id
+            and m.author.id == uid
+            and not m.author.bot
+        )
+
+    reponse_finale = None
+    position_finale = -2  # -2 = timeout
+
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            msg_rep = await bot.wait_for("message", timeout=remaining, check=check)
+            reponse_finale = msg_rep.content.strip()
+            position_finale = trouver_brawler_draft(reponse_finale, scenario)
+            break
+    except asyncio.TimeoutError:
+        pass
+
+    active_draft_games.pop(channel_id, None)
+
+    # Calcul delta ELO
+    if position_finale == 0:
+        delta = 30
+    elif position_finale == 1:
+        delta = 20
+    elif position_finale == 2:
+        delta = 15
+    elif 3 <= position_finale <= 4:
+        delta = 5
+    elif position_finale == -2:
+        delta = -10
+    elif position_finale > 4:
+        delta = -15
+    else:
+        delta = -20
+
+    nouvel_elo = elo_actuel + delta
+    set_elo(gid, uid, nouvel_elo)
+
+    embed_res = embed_resultat(
+        scenario,
+        reponse_finale or "Aucune réponse",
+        position_finale,
+        delta,
+        nouvel_elo,
+    )
+
+    # Thumbnail = avatar du best pick
+    embed_res.set_thumbnail(url=f"https://media.brawltime.ninja/brawlers/{slug_best}/avatar.png")
+
+    try:
+        await msg.edit(embed=embed_res)
+    except discord.NotFound:
+        await interaction.channel.send(embed=embed_res)
+
+
+@arbre.command(name="draft-elo", description="Affiche ton ELO et ton rang en Draft Ranked")
+async def draft_elo_cmd(interaction: discord.Interaction):
+    gid = interaction.guild_id
+    uid = interaction.user.id
+    elo = get_elo(gid, uid)
+    rang = get_rang(elo)
+
+    # Classement du serveur
+    scores = draft_elo.get(gid, {})
+    tries = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    rang_serveur = next((i + 1 for i, (u, _) in enumerate(tries) if u == uid), None)
+
+    embed = discord.Embed(
+        title="🏆 Draft Ranked — Ton ELO",
+        color=0xFFD700,
+    )
+    embed.set_thumbnail(url=interaction.user.display_avatar.url)
+    embed.add_field(name="🎖️ Rang", value=rang, inline=True)
+    embed.add_field(name="📊 ELO", value=f"`{elo}`", inline=True)
+    if rang_serveur:
+        embed.add_field(name="🏅 Classement serveur", value=f"`#{rang_serveur}`", inline=True)
+
+    # Barème
+    embed.add_field(
+        name="📈 Gains/Pertes ELO",
+        value=(
+            "🎯 Best pick → `+30`\n"
+            "✅ Top 2 → `+20`\n"
+            "✅ Top 3 → `+15`\n"
+            "🟡 Top 5 → `+5`\n"
+            "🟠 Top 10 → `-15`\n"
+            "❌ Hors top → `-20`\n"
+            "⏰ Timeout → `-10`"
+        ),
+        inline=False,
+    )
+    embed.set_footer(text="Brawl Zone • Draft Ranked")
+    await interaction.response.send_message(embed=embed)
+
+
+@arbre.command(name="draft-classement", description="Affiche le classement Draft Ranked du serveur")
+async def draft_classement_cmd(interaction: discord.Interaction):
+    gid = interaction.guild_id
+    scores = draft_elo.get(gid, {})
+
+    if not scores:
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="🏆 Classement Draft Ranked",
+                description="Aucune partie jouée ! Lance `/draft` pour commencer.",
+                color=0xFFD700,
+            )
+        )
+        return
+
+    tries = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    medailles = ["🥇", "🥈", "🥉"]
+    lignes = []
+    for i, (uid, elo) in enumerate(tries[:10]):
+        membre = interaction.guild.get_member(uid)
+        nom = membre.display_name if membre else f"ID {uid}"
+        medaille = medailles[i] if i < 3 else f"`#{i + 1}`"
+        lignes.append(f"{medaille} **{nom}** — {get_rang(elo)} `{elo} ELO`")
+
+    embed = discord.Embed(
+        title="🏆 Classement Draft Ranked",
+        description="\n".join(lignes),
+        color=0xFFD700,
+    )
+    embed.set_footer(text="Brawl Zone • Draft Ranked")
+    await interaction.response.send_message(embed=embed)
+
+
 if KEEP_ALIVE_AVAILABLE:
     keep_alive()
 
