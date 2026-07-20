@@ -21,7 +21,7 @@ TOKEN = os.getenv("TOKEN_BOT")
 LIEN_INVITATION = (
     "https://discord.com/oauth2/authorize?"
     "client_id=1495103873373704472"
-    "&permissions=8"
+    "&permissions=4785076768427024"
     "&integration_type=0"
     "&scope=bot+applications.commands"
 )
@@ -265,169 +265,10 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 
 
 # ═══════════════════════════════════════════════════════════
-#  GROUPES DE COMMANDES  /vocal type ...  /vocal hub ...
+#  GROUPE DE COMMANDES  /vocal ...
+#  (toute la gestion des types/hubs passe désormais par /vocal config)
 # ═══════════════════════════════════════════════════════════
 groupe_vocal = app_commands.Group(name="vocal", description="Système de vocaux temporaires")
-groupe_type = app_commands.Group(name="type", description="Gestion des types de vocaux (staff)", parent=groupe_vocal)
-groupe_hub = app_commands.Group(name="hub", description="Gestion des salons hub (staff)", parent=groupe_vocal)
-
-
-# ── /vocal type creer ────────────────────────────────────────
-@groupe_type.command(name="creer", description="Crée un nouveau type de vocal proposé aux membres")
-@app_commands.describe(
-    nom="Nom du type (ex: Duo, Squad, Chill)",
-    limite="Nombre max de membres dans ce type de vocal (0 = illimité)",
-    modifiable="Le créateur peut-il renommer/changer la limite de son vocal ensuite ?",
-    format_nom="Format du nom du vocal créé. Utilise {pseudo} et {type}.",
-)
-@app_commands.checks.has_permissions(manage_channels=True)
-async def type_creer(
-    interaction: discord.Interaction,
-    nom: str,
-    limite: app_commands.Range[int, 0, 99] = 0,
-    modifiable: bool = False,
-    format_nom: str = "🔊 {type} de {pseudo}",
-):
-    gconf = config_serveur(interaction.guild_id)
-    if any(t.lower() == nom.lower() for t in gconf["types"]):
-        await interaction.response.send_message(f"❌ Le type **{nom}** existe déjà.", ephemeral=True)
-        return
-
-    gconf["types"][nom] = {"limite": limite, "modifiable": modifiable, "format_nom": format_nom}
-    sauvegarder_configuration()
-
-    embed = discord.Embed(title="✅ Type de vocal créé", color=0x00FF88)
-    embed.add_field(name="Nom", value=nom, inline=True)
-    embed.add_field(name="Limite", value=str(limite) if limite else "Illimitée", inline=True)
-    embed.add_field(name="Modifiable par le créateur", value="Oui" if modifiable else "Non", inline=True)
-    embed.add_field(name="Format du nom", value=f"`{format_nom}`", inline=False)
-    embed.set_footer(text="Brawl Zone • Vocaux temporaires")
-    await interaction.response.send_message(embed=embed)
-
-
-# ── /vocal type supprimer ───────────────────────────────────
-@groupe_type.command(name="supprimer", description="Supprime un type de vocal")
-@app_commands.describe(nom="Nom du type à supprimer")
-@app_commands.checks.has_permissions(manage_channels=True)
-async def type_supprimer(interaction: discord.Interaction, nom: str):
-    gconf = config_serveur(interaction.guild_id)
-    cle = next((t for t in gconf["types"] if t.lower() == nom.lower()), None)
-    if not cle:
-        await interaction.response.send_message(f"❌ Le type **{nom}** n'existe pas.", ephemeral=True)
-        return
-    del gconf["types"][cle]
-    sauvegarder_configuration()
-    await interaction.response.send_message(f"✅ Type **{cle}** supprimé.")
-
-
-@type_supprimer.autocomplete("nom")
-async def type_supprimer_autocomplete(interaction: discord.Interaction, actuel: str):
-    gconf = config_serveur(interaction.guild_id)
-    return [
-        app_commands.Choice(name=t, value=t)
-        for t in gconf["types"] if actuel.lower() in t.lower()
-    ][:25]
-
-
-# ── /vocal type liste ────────────────────────────────────────
-@groupe_type.command(name="liste", description="Affiche tous les types de vocaux disponibles")
-async def type_liste(interaction: discord.Interaction):
-    gconf = config_serveur(interaction.guild_id)
-    if not gconf["types"]:
-        await interaction.response.send_message("Aucun type de vocal n'a encore été créé.", ephemeral=True)
-        return
-
-    embed = discord.Embed(title="📋 Types de vocaux disponibles", color=0xFFD700)
-    for nom, info in gconf["types"].items():
-        embed.add_field(
-            name=f"🔊 {nom}",
-            value=(
-                f"Limite : {info['limite'] if info['limite'] else 'Illimitée'}\n"
-                f"Modifiable : {'Oui' if info['modifiable'] else 'Non'}\n"
-                f"Format : `{info['format_nom']}`"
-            ),
-            inline=False,
-        )
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
-# ── /vocal hub creer ─────────────────────────────────────────
-@groupe_hub.command(name="creer", description="Crée un salon hub (rejoindre = proposer un choix de vocal)")
-@app_commands.describe(
-    salon="Salon vocal existant à transformer en hub (sinon un nouveau est créé)",
-    nom="Nom du nouveau salon hub (si aucun salon existant n'est donné)",
-    categorie="Catégorie où créer le nouveau hub (optionnel)",
-)
-@app_commands.checks.has_permissions(manage_channels=True)
-async def hub_creer(
-    interaction: discord.Interaction,
-    salon: discord.VoiceChannel = None,
-    nom: str = "➕ Créer un vocal",
-    categorie: discord.CategoryChannel = None,
-):
-    gconf = config_serveur(interaction.guild_id)
-    if not gconf["types"]:
-        await interaction.response.send_message(
-            "❌ Crée d'abord au moins un type de vocal avec `/vocal type creer`.", ephemeral=True
-        )
-        return
-
-    cible = salon or await interaction.guild.create_voice_channel(name=nom, category=categorie)
-
-    if str(cible.id) in gconf["hubs"]:
-        await interaction.response.send_message(f"❌ {cible.mention} est déjà un hub.", ephemeral=True)
-        return
-
-    gconf["hubs"].append(str(cible.id))
-    sauvegarder_configuration()
-
-    embed = discord.Embed(
-        title="✅ Hub créé",
-        description=f"{cible.mention} est maintenant un salon hub : le rejoindre proposera un choix de vocal.",
-        color=0x00FF88,
-    )
-    await interaction.response.send_message(embed=embed)
-
-
-# ── /vocal hub supprimer ────────────────────────────────────
-@groupe_hub.command(name="supprimer", description="Retire un salon de la liste des hubs")
-@app_commands.describe(salon="Salon hub à retirer", supprimer_le_salon="Supprimer aussi le salon Discord ?")
-@app_commands.checks.has_permissions(manage_channels=True)
-async def hub_supprimer(interaction: discord.Interaction, salon: discord.VoiceChannel, supprimer_le_salon: bool = False):
-    gconf = config_serveur(interaction.guild_id)
-    if str(salon.id) not in gconf["hubs"]:
-        await interaction.response.send_message(f"❌ {salon.mention} n'est pas un hub.", ephemeral=True)
-        return
-
-    gconf["hubs"].remove(str(salon.id))
-    sauvegarder_configuration()
-
-    if supprimer_le_salon:
-        try:
-            await salon.delete(reason="Hub retiré")
-        except discord.HTTPException:
-            pass
-
-    await interaction.response.send_message(f"✅ {salon.mention} n'est plus un hub.")
-
-
-# ── /vocal hub liste ─────────────────────────────────────────
-@groupe_hub.command(name="liste", description="Affiche tous les salons hub du serveur")
-async def hub_liste(interaction: discord.Interaction):
-    gconf = config_serveur(interaction.guild_id)
-    salons = [interaction.guild.get_channel(int(cid)) for cid in gconf["hubs"]]
-    salons = [s for s in salons if s]
-
-    if not salons:
-        await interaction.response.send_message("Aucun hub n'a encore été créé.", ephemeral=True)
-        return
-
-    embed = discord.Embed(
-        title="📋 Salons hub",
-        description="\n".join(f"🎙️ {s.mention}" for s in salons),
-        color=0xFFD700,
-    )
-    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -801,73 +642,6 @@ CMDS = {
             "**Permission requise :** Gérer les salons"
         ),
     },
-    "vocal type creer": {
-        "emoji": "➕",
-        "titre": "/vocal type creer",
-        "categorie": "Staff",
-        "desc": "Crée un nouveau type de vocal proposé aux membres.",
-        "details": (
-            "Définit un type de vocal que les membres pourront choisir en rejoignant un hub "
-            "(ex: Duo, Squad, Chill).\n\n"
-            "**Options**\n"
-            "`nom` — Nom du type (ex: Duo)\n"
-            "`limite` — Nombre max de membres (0 = illimité)\n"
-            "`modifiable` — Le créateur peut-il renommer/changer la limite ensuite ?\n"
-            "`format_nom` — Modèle du nom du vocal créé, avec `{pseudo}` et `{type}`\n\n"
-            "**Permission requise :** Gérer les salons"
-        ),
-    },
-    "vocal type supprimer": {
-        "emoji": "🗑️",
-        "titre": "/vocal type supprimer",
-        "categorie": "Staff",
-        "desc": "Supprime un type de vocal existant.",
-        "details": (
-            "Retire un type de la liste proposée aux membres (autocomplétion disponible).\n"
-            "Les vocaux déjà créés avec ce type ne sont pas affectés.\n\n"
-            "**Permission requise :** Gérer les salons"
-        ),
-    },
-    "vocal type liste": {
-        "emoji": "📋",
-        "titre": "/vocal type liste",
-        "categorie": "Info",
-        "desc": "Affiche tous les types de vocaux disponibles.",
-        "details": "Liste chaque type avec sa limite, s'il est modifiable et son format de nom.",
-    },
-    "vocal hub creer": {
-        "emoji": "🎙️",
-        "titre": "/vocal hub creer",
-        "categorie": "Staff",
-        "desc": "Crée un salon hub (rejoindre = proposer un choix de vocal).",
-        "details": (
-            "Transforme un salon vocal existant en hub, ou en crée un nouveau si aucun n'est fourni.\n"
-            "Autant de hubs que voulu peuvent exister en même temps.\n\n"
-            "**Options**\n"
-            "`salon` — Salon existant à transformer (optionnel)\n"
-            "`nom` — Nom du nouveau salon si aucun n'est fourni\n"
-            "`categorie` — Catégorie où créer le hub (optionnel)\n\n"
-            "**Permission requise :** Gérer les salons"
-        ),
-    },
-    "vocal hub supprimer": {
-        "emoji": "🚫",
-        "titre": "/vocal hub supprimer",
-        "categorie": "Staff",
-        "desc": "Retire un salon de la liste des hubs.",
-        "details": (
-            "Le salon arrête de proposer le choix de vocal en le rejoignant.\n"
-            "`supprimer_le_salon` permet aussi de supprimer le salon Discord.\n\n"
-            "**Permission requise :** Gérer les salons"
-        ),
-    },
-    "vocal hub liste": {
-        "emoji": "📋",
-        "titre": "/vocal hub liste",
-        "categorie": "Info",
-        "desc": "Affiche tous les salons hub du serveur.",
-        "details": "Liste tous les salons actuellement configurés comme hub.",
-    },
     "vocal renommer": {
         "emoji": "✏️",
         "titre": "/vocal renommer",
@@ -903,21 +677,7 @@ def embed_apercu() -> discord.Embed:
     )
     embed.add_field(
         name="🛠️ Staff",
-        value=(
-            "`/vocal config` — ⭐ Panneau interactif tout-en-un\n"
-            "`/vocal type creer` — Crée un type de vocal\n"
-            "`/vocal type supprimer` — Supprime un type\n"
-            "`/vocal hub creer` — Crée un salon hub\n"
-            "`/vocal hub supprimer` — Retire un hub"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="📋 Info",
-        value=(
-            "`/vocal type liste` — Liste des types\n"
-            "`/vocal hub liste` — Liste des hubs"
-        ),
+        value="`/vocal config` — ⭐ Panneau interactif tout-en-un (types & hubs)",
         inline=False,
     )
     embed.add_field(
@@ -1035,7 +795,7 @@ async def on_message(message: discord.Message):
         )
 
     await bot.process_commands(message)
-    
+
 if KEEP_ALIVE_AVAILABLE:
     keep_alive()
 
