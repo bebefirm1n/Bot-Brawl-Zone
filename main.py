@@ -778,7 +778,7 @@ class InviteView(discord.ui.View):
 
         self.add_item(
             discord.ui.Button(
-                label="🤖 Inviter Beflow",
+                label="<:love:1486416128254152826> Inviter Beflow",
                 style=discord.ButtonStyle.link,
                 url=LIEN_INVITATION,
             )
@@ -1014,7 +1014,7 @@ async def on_message(message: discord.Message):
         )
 
         embed.add_field(
-            name="✨ Fonctionnalités",
+            name="<a:mangerr:1485359165516939356> Fonctionnalités",
             value=(
                 "<a:ar:1485250353854288035> Vocaux temporaires\n"
                 "<a:ar:1485250353854288035> Types de salons\n"
