@@ -101,7 +101,7 @@ async def on_ready():
         activity=discord.Activity(type=discord.ActivityType.watching, name="Not Feller & Mitteg & Nadouja")
     )
     print(f"[✓] {bot.user} connecté — Slash commands synchronisées.")
-
+    
 
 # ═══════════════════════════════════════════════════════════
 #  MENU DE CHOIX DU TYPE DE VOCAL (affiché dans le chat vocal)
@@ -308,11 +308,14 @@ async def creer_vocal_temporaire(interaction: discord.Interaction, membre: disco
 @bot.event
 async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
     if member.bot:
-        return
+        return print(f"[VOICE] {member} : {before.channel} -> {after.channel}")
 
     gconf = config_serveur(member.guild.id)
+    print("Hubs :", gconf["hubs"])
+    print("Types :", list(gconf["types"].keys()))
+    print("Salon rejoint :", after.channel.id if after.channel else None)
 
-    # ── Rejoint un salon hub ────────────────────────────────
+# ── Rejoint un salon hub ────────────────────────────────
     if after.channel and str(after.channel.id) in gconf["hubs"] and before.channel != after.channel:
         if not gconf["types"]:
             logging.warning(
@@ -331,6 +334,7 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         )
         view = ChoixTypeView(member, gconf)
         try:
+            print(">>> J'essaie d'envoyer le menu")
             msg = await after.channel.send(
                 content=member.mention,
                 embed=embed,
