@@ -333,17 +333,17 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
             color=0xFFD700,
         )
         view = ChoixTypeView(member, gconf)
+       print("J'ESSAIE D'ENVOYER LE MESSAGE")
+
         try:
-            print(">>> J'essaie d'envoyer le menu")
             msg = await after.channel.send(
-                content=member.mention,
-                embed=embed,
-                view=view,
-                allowed_mentions=discord.AllowedMentions(users=[member]),
+                "TEST : si tu vois ce message, after.channel.send fonctionne."
             )
-            view.message = msg
-        except Exception as e:
-            print("ERREUR :", repr(e))
+        print("MESSAGE ENVOYÉ")
+    except Exception as e:
+        print("ERREUR :", type(e).__name__, e)
+        
+view.message = msg
 
     # ── Quitte un vocal temporaire → suppression si vide ────
     if before.channel and str(before.channel.id) in gconf["temp_channels"]:
