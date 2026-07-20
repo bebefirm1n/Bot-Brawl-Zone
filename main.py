@@ -333,7 +333,7 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
             color=0xFFD700,
         )
         view = ChoixTypeView(member, gconf)
-       print("J'ESSAIE D'ENVOYER LE MESSAGE")
+        print("J'ESSAIE D'ENVOYER LE MESSAGE")
 
         try:
             msg = await after.channel.send(
