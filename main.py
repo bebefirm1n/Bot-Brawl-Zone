@@ -101,7 +101,7 @@ async def on_ready():
         activity=discord.Activity(type=discord.ActivityType.watching, name="Not Feller & Mitteg & Nadouja")
     )
     print(f"[✓] {bot.user} connecté — Slash commands synchronisées.")
-    print("discord.py :", discord.__version__)
+
 
 # ═══════════════════════════════════════════════════════════
 #  MENU DE CHOIX DU TYPE DE VOCAL (affiché dans le chat vocal)
@@ -308,14 +308,11 @@ async def creer_vocal_temporaire(interaction: discord.Interaction, membre: disco
 @bot.event
 async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
     if member.bot:
-        return print(f"[VOICE] {member} : {before.channel} -> {after.channel}")
+        return
 
     gconf = config_serveur(member.guild.id)
-    print("Hubs :", gconf["hubs"])
-    print("Types :", list(gconf["types"].keys()))
-    print("Salon rejoint :", after.channel.id if after.channel else None)
 
-# ── Rejoint un salon hub ────────────────────────────────
+    # ── Rejoint un salon hub ────────────────────────────────
     if after.channel and str(after.channel.id) in gconf["hubs"] and before.channel != after.channel:
         if not gconf["types"]:
             logging.warning(
@@ -333,16 +330,19 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
             color=0xFFD700,
         )
         view = ChoixTypeView(member, gconf)
-        print("J'ESSAIE D'ENVOYER LE MESSAGE")
-
         try:
             msg = await after.channel.send(
-                "TEST : si tu vois ce message, after.channel.send fonctionne."
+                content=member.mention,
+                embed=embed,
+                view=view,
+                allowed_mentions=discord.AllowedMentions(users=[member]),
             )
-            print("MESSAGE ENVOYÉ")
-        except Exception as e:
-            print("ERREUR :", type(e).__name__, e)
-        view.message = msg
+            view.message = msg
+        except discord.Forbidden:
+            logging.warning(
+                f"Permission refusée pour envoyer un message dans le hub {after.channel.id} "
+                f"(serveur {member.guild.id}) — vérifie que le bot peut écrire dans ce salon vocal."
+            )
 
     # ── Quitte un vocal temporaire → suppression si vide ────
     if before.channel and str(before.channel.id) in gconf["temp_channels"]:
