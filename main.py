@@ -101,7 +101,7 @@ async def on_ready():
         activity=discord.Activity(type=discord.ActivityType.watching, name="Not Feller & Mitteg & Nadouja")
     )
     print(f"[✓] {bot.user} connecté — Slash commands synchronisées.")
-    
+    print("discord.py :", discord.__version__)
 
 # ═══════════════════════════════════════════════════════════
 #  MENU DE CHOIX DU TYPE DE VOCAL (affiché dans le chat vocal)
@@ -342,11 +342,8 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
                 allowed_mentions=discord.AllowedMentions(users=[member]),
             )
             view.message = msg
-        except discord.Forbidden:
-            logging.warning(
-                f"Permission refusée pour envoyer un message dans le hub {after.channel.id} "
-                f"(serveur {member.guild.id}) — vérifie que le bot peut écrire dans ce salon vocal."
-            )
+        except Exception as e:
+            print("ERREUR :", repr(e))
 
     # ── Quitte un vocal temporaire → suppression si vide ────
     if before.channel and str(before.channel.id) in gconf["temp_channels"]:
