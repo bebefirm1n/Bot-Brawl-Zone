@@ -315,6 +315,10 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
     # ── Rejoint un salon hub ────────────────────────────────
     if after.channel and str(after.channel.id) in gconf["hubs"] and before.channel != after.channel:
         if not gconf["types"]:
+            logging.warning(
+                f"Hub {after.channel.id} rejoint par {member.id} mais aucun type de vocal "
+                f"n'est configuré sur le serveur {member.guild.id} (utilise /vocal config)."
+            )
             return  # aucun type configuré par le staff, on ne fait rien
 
         embed = discord.Embed(
@@ -335,7 +339,10 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
             )
             view.message = msg
         except discord.Forbidden:
-            pass
+            logging.warning(
+                f"Permission refusée pour envoyer un message dans le hub {after.channel.id} "
+                f"(serveur {member.guild.id}) — vérifie que le bot peut écrire dans ce salon vocal."
+            )
 
     # ── Quitte un vocal temporaire → suppression si vide ────
     if before.channel and str(before.channel.id) in gconf["temp_channels"]:
@@ -501,14 +508,16 @@ class VueSupprimerType(VueBase):
 class HubModal(discord.ui.Modal, title="Nouveau salon hub"):
     nom = discord.ui.TextInput(label="Nom du salon", default="➕ Créer un vocal", max_length=100)
 
-    def __init__(self, guild_id: int, auteur_id: int):
+    def __init__(self, guild_id: int, auteur_id: int, categorie_id: int | None = None):
         super().__init__()
         self.guild_id = guild_id
         self.auteur_id = auteur_id
+        self.categorie_id = categorie_id
 
     async def on_submit(self, interaction: discord.Interaction):
         gconf = config_serveur(self.guild_id)
-        salon = await interaction.guild.create_voice_channel(name=self.nom.value.strip()[:100])
+        categorie = interaction.guild.get_channel(self.categorie_id) if self.categorie_id else None
+        salon = await interaction.guild.create_voice_channel(name=self.nom.value.strip()[:100], category=categorie)
         gconf["hubs"].append(str(salon.id))
         sauvegarder_configuration()
 
@@ -546,16 +555,39 @@ class SelectSalonExistant(discord.ui.ChannelSelect):
         vue.message = interaction.message
 
 
+class SelectCategorieHub(discord.ui.ChannelSelect):
+    """Choix de la catégorie du salon qui sera créé via le bouton 'Créer un nouveau salon'."""
+
+    def __init__(self):
+        super().__init__(
+            placeholder="Catégorie du nouveau salon (optionnel)...",
+            channel_types=[discord.ChannelType.category],
+            min_values=1,
+            max_values=1,
+            row=1,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        self.view.categorie_id = self.values[0].id
+        await interaction.response.send_message(
+            f"📁 Catégorie sélectionnée : **{self.values[0].name}** (pour le prochain salon créé).",
+            ephemeral=True,
+        )
+
+
 class VueNouveauHub(VueBase):
-    def __init__(self, guild_id: int, auteur_id: int):
+    def __init__(self, guild_id: int, auteur_id: int, guild: discord.Guild):
         super().__init__(guild_id, auteur_id)
+        self.categorie_id: int | None = None
         self.add_item(SelectSalonExistant(guild_id))
+        if guild.categories:
+            self.add_item(SelectCategorieHub())
 
-    @discord.ui.button(label="Créer un nouveau salon", style=discord.ButtonStyle.success, emoji="➕", row=1)
+    @discord.ui.button(label="Créer un nouveau salon", style=discord.ButtonStyle.success, emoji="➕", row=2)
     async def nouveau_salon(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(HubModal(self.guild_id, self.auteur_id))
+        await interaction.response.send_modal(HubModal(self.guild_id, self.auteur_id, self.categorie_id))
 
-    @discord.ui.button(label="Retour", style=discord.ButtonStyle.secondary, emoji="⬅️", row=1)
+    @discord.ui.button(label="Retour", style=discord.ButtonStyle.secondary, emoji="⬅️", row=2)
     async def retour(self, interaction: discord.Interaction, button: discord.ui.Button):
         gconf = config_serveur(self.guild_id)
         vue = VueConfig(self.guild_id, self.auteur_id)
@@ -627,11 +659,14 @@ class VueConfig(VueBase):
                 "❌ Crée d'abord au moins un type de vocal avant de créer un hub.", ephemeral=True
             )
             return
-        vue = VueNouveauHub(self.guild_id, self.auteur_id)
+        vue = VueNouveauHub(self.guild_id, self.auteur_id, interaction.guild)
         await interaction.response.edit_message(
             embed=discord.Embed(
                 title="🎙️ Nouveau hub",
-                description="Choisis un salon vocal existant à transformer, ou crée-en un nouveau.",
+                description=(
+                    "Choisis un salon vocal existant à transformer, une catégorie pour le nouveau "
+                    "salon (optionnel), ou crée-en un nouveau directement."
+                ),
                 color=0x00FF88,
             ),
             view=vue,
