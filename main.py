@@ -768,13 +768,14 @@ async def vocal_limite(interaction: discord.Interaction, nombre: app_commands.Ra
         f"✅ Limite mise à jour : **{nombre if nombre else 'illimitée'}**.", ephemeral=True
     )
 
+# ═══════════════════════════════════════════════════════════
+#  PANEL D'INVITATION
+# ═══════════════════════════════════════════════════════════
+
 class InviteView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-# ═══════════════════════════════════════════════════════════
-#  PANEL D'INVITATION
-# ═══════════════════════════════════════════════════════════
     self.add_item(
     discord.ui.Button(
         label="🤖 Inviter Beflow",
