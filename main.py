@@ -339,9 +339,9 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
             msg = await after.channel.send(
                 "TEST : si tu vois ce message, after.channel.send fonctionne."
             )
-        print("MESSAGE ENVOYÉ")
-    except Exception as e:
-        print("ERREUR :", type(e).__name__, e)
+            print("MESSAGE ENVOYÉ")
+        except Exception as e:
+            print("ERREUR :", type(e).__name__, e)
         view.message = msg
 
     # ── Quitte un vocal temporaire → suppression si vide ────
