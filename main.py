@@ -1020,7 +1020,7 @@ async def on_message(message: discord.Message):
                 "<a:ar:1485250353854288035> Types de salons\n"
                 "<a:ar:1485250353854288035> Hubs\n"
                 "<a:ar:1485250353854288035> Configuration interactive\n"
-                "<a:ar:1485250353854288035> Gestion des Noms et limites de membres des vocs"
+                "<a:ar:1485250353854288035> Gestion des vocs"
             ),
             inline=False,
         )
