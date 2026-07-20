@@ -1004,7 +1004,7 @@ async def on_message(message: discord.Message):
 
     if bot.user in message.mentions:
         embed = discord.Embed(
-            title="🌊 Beflow",
+            title="<a:r2:1485268957664383038> Beflow",
             description=(
                 "Salut ! Je suis **Beflow**.\n\n"
                 "Je crée automatiquement des **vocaux temporaires** entièrement configurables.\n\n"
@@ -1016,11 +1016,11 @@ async def on_message(message: discord.Message):
         embed.add_field(
             name="✨ Fonctionnalités",
             value=(
-                "🎙️ Vocaux temporaires\n"
-                "🎛️ Types de salons\n"
-                "📂 Hubs\n"
-                "⚙️ Configuration interactive\n"
-                "👤 Renommage & limite des vocaux"
+                "<a:ar:1485250353854288035> Vocaux temporaires\n"
+                "<a:ar:1485250353854288035> Types de salons\n"
+                "<a:ar:1485250353854288035> Hubs\n"
+                "<a:ar:1485250353854288035> Configuration interactive\n"
+                "<a:ar:1485250353854288035> Gestion des Noms et limites de membres des vocs"
             ),
             inline=False,
         )
