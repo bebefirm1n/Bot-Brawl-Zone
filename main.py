@@ -18,6 +18,14 @@ except ImportError:
 load_dotenv()
 TOKEN = os.getenv("TOKEN_BOT")
 
+LIEN_INVITATION = (
+    "https://discord.com/oauth2/authorize?"
+    "client_id=1495103873373704472"
+    "&permissions=4785076768427024"
+    "&integration_type=0"
+    "&scope=bot+applications.commands"
+)
+
 # ═══════════════════════════════════════════════════════════
 #  RÉGLAGES
 # ═══════════════════════════════════════════════════════════
@@ -760,6 +768,20 @@ async def vocal_limite(interaction: discord.Interaction, nombre: app_commands.Ra
         f"✅ Limite mise à jour : **{nombre if nombre else 'illimitée'}**.", ephemeral=True
     )
 
+class InviteView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+# ═══════════════════════════════════════════════════════════
+#  PANEL D'INVITATION
+# ═══════════════════════════════════════════════════════════
+    self.add_item(
+    discord.ui.Button(
+        label="🤖 Inviter Beflow",
+        style=discord.ButtonStyle.link,
+        url=LIEN_INVITATION,
+    )
+)
 
 # ═══════════════════════════════════════════════════════════
 #  AIDE — /help avec panel interactif
@@ -974,7 +996,44 @@ async def help_cmd(interaction: discord.Interaction):
 
 arbre.add_command(groupe_vocal)
 
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
 
+    if bot.user in message.mentions:
+        embed = discord.Embed(
+            title="🌊 Beflow",
+            description=(
+                "Salut ! Je suis **Beflow**.\n\n"
+                "Je crée automatiquement des **vocaux temporaires** entièrement configurables.\n\n"
+                "Clique sur le bouton ci-dessous pour m'ajouter à ton serveur."
+            ),
+            color=0x5865F2,
+        )
+
+        embed.add_field(
+            name="✨ Fonctionnalités",
+            value=(
+                "🎙️ Vocaux temporaires\n"
+                "🎛️ Types de salons\n"
+                "📂 Hubs\n"
+                "⚙️ Configuration interactive\n"
+                "👤 Renommage & limite des vocaux"
+            ),
+            inline=False,
+        )
+
+        embed.set_footer(text="Développé par Bebefirm1")
+
+        await message.reply(
+            embed=embed,
+            view=InviteView(),
+            mention_author=False,
+        )
+
+    await bot.process_commands(message)
+    
 if KEEP_ALIVE_AVAILABLE:
     keep_alive()
 
