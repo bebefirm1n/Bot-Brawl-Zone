@@ -75,6 +75,10 @@ arbre = bot.tree
 
 @bot.event
 async def on_ready():
+    # Vue persistante : nécessaire pour que les boutons du panneau vocal
+    # continuent de fonctionner après un redémarrage du bot
+    bot.add_view(PanelVocalView())
+
     # Nettoyage au démarrage : hubs/vocaux supprimés pendant que le bot était offline
     for gid, gconf in list(configuration.items()):
         guild = bot.get_guild(int(gid))
@@ -166,6 +170,92 @@ async def supprimer_message_plus_tard(message: discord.Message, delai: int = DEL
         pass
 
 
+# ═══════════════════════════════════════════════════════════
+#  PANNEAU DE GESTION DU VOCAL (affiché dans le chat du vocal créé)
+#  Vue persistante : les boutons fonctionnent même après un redémarrage
+#  du bot, et la permission (nom/limite) est vérifiée à chaque clic.
+# ═══════════════════════════════════════════════════════════
+class RenommerVocalModal(discord.ui.Modal, title="Renommer le vocal"):
+    nouveau_nom = discord.ui.TextInput(label="Nouveau nom", max_length=100)
+
+    def __init__(self, channel_id: int):
+        super().__init__()
+        self.channel_id = channel_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        salon = interaction.guild.get_channel(self.channel_id)
+        if not salon:
+            await interaction.response.send_message("❌ Salon introuvable.", ephemeral=True)
+            return
+        await salon.edit(name=self.nouveau_nom.value[:100])
+        await interaction.response.send_message(f"✅ Vocal renommé en **{self.nouveau_nom.value}**.", ephemeral=True)
+
+
+class LimiteVocalModal(discord.ui.Modal, title="Changer la limite"):
+    nombre = discord.ui.TextInput(label="Nouvelle limite (0 = illimité)", default="0", max_length=2)
+
+    def __init__(self, channel_id: int):
+        super().__init__()
+        self.channel_id = channel_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            valeur = max(0, min(99, int(self.nombre.value.strip())))
+        except ValueError:
+            await interaction.response.send_message("❌ La limite doit être un nombre entier.", ephemeral=True)
+            return
+        salon = interaction.guild.get_channel(self.channel_id)
+        if not salon:
+            await interaction.response.send_message("❌ Salon introuvable.", ephemeral=True)
+            return
+        await salon.edit(user_limit=valeur)
+        await interaction.response.send_message(
+            f"✅ Limite mise à jour : **{valeur if valeur else 'illimitée'}**.", ephemeral=True
+        )
+
+
+class PanelVocalView(discord.ui.View):
+    """Vue persistante (custom_id fixes) : une seule instance suffit pour tous les vocaux."""
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @staticmethod
+    def _info(interaction: discord.Interaction):
+        gconf = config_serveur(interaction.guild_id)
+        return gconf, gconf["temp_channels"].get(str(interaction.channel_id))
+
+    @discord.ui.button(label="Renommer", style=discord.ButtonStyle.primary, emoji="✏️", custom_id="panel_vocal_renommer")
+    async def bouton_renommer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        gconf, info = self._info(interaction)
+        if not info:
+            await interaction.response.send_message("❌ Ce salon n'est plus un vocal temporaire.", ephemeral=True)
+            return
+        if info["owner_id"] != interaction.user.id:
+            await interaction.response.send_message("❌ Seul le créateur du vocal peut le modifier.", ephemeral=True)
+            return
+        type_info = gconf["types"].get(info["type"])
+        if not type_info or not type_info.get("modifiable_nom"):
+            await interaction.response.send_message("❌ Le nom de ce vocal ne peut pas être modifié.", ephemeral=True)
+            return
+        await interaction.response.send_modal(RenommerVocalModal(interaction.channel_id))
+
+    @discord.ui.button(label="Limite", style=discord.ButtonStyle.primary, emoji="👥", custom_id="panel_vocal_limite")
+    async def bouton_limite(self, interaction: discord.Interaction, button: discord.ui.Button):
+        gconf, info = self._info(interaction)
+        if not info:
+            await interaction.response.send_message("❌ Ce salon n'est plus un vocal temporaire.", ephemeral=True)
+            return
+        if info["owner_id"] != interaction.user.id:
+            await interaction.response.send_message("❌ Seul le créateur du vocal peut le modifier.", ephemeral=True)
+            return
+        type_info = gconf["types"].get(info["type"])
+        if not type_info or not type_info.get("modifiable_limite"):
+            await interaction.response.send_message("❌ La limite de ce vocal ne peut pas être modifiée.", ephemeral=True)
+            return
+        await interaction.response.send_modal(LimiteVocalModal(interaction.channel_id))
+
+
 async def creer_vocal_temporaire(interaction: discord.Interaction, membre: discord.Member, nom_type: str):
     gconf = config_serveur(membre.guild.id)
     type_info = gconf["types"].get(nom_type)
@@ -197,6 +287,19 @@ async def creer_vocal_temporaire(interaction: discord.Interaction, membre: disco
     await interaction.response.edit_message(content=None, embed=embed, view=None)
     msg = await interaction.original_response()
     asyncio.create_task(supprimer_message_plus_tard(msg))
+
+    try:
+        panel_embed = discord.Embed(
+            title="🎛️ Gestion de ton vocal",
+            description=(
+                "Utilise les boutons ci-dessous pour personnaliser ton vocal "
+                "(disponible seulement si le type le permet)."
+            ),
+            color=0xFFD700,
+        )
+        await nouveau_salon.send(embed=panel_embed, view=PanelVocalView())
+    except discord.HTTPException:
+        pass
 
 
 # ═══════════════════════════════════════════════════════════
@@ -276,7 +379,7 @@ groupe_vocal = app_commands.Group(name="vocal", description="Système de vocaux 
 # ═══════════════════════════════════════════════════════════
 def embed_config(gconf: dict) -> discord.Embed:
     types_txt = "\n".join(
-        f"🔊 **{n}** — limite {i['limite'] or '∞'}, {'modifiable' if i['modifiable'] else 'fixe'}"
+        f"🔊 **{n}** — limite {i['limite'] or '∞'} · nom {'✅' if i.get('modifiable_nom') else '❌'} · limite {'✅' if i.get('modifiable_limite') else '❌'}"
         for n, i in gconf["types"].items()
     ) or "_Aucun type créé_"
     hubs_txt = "\n".join(f"🎙️ <#{cid}>" for cid in gconf["hubs"]) or "_Aucun hub créé_"
@@ -321,7 +424,8 @@ class VueBase(discord.ui.View):
 class TypeModal(discord.ui.Modal, title="Nouveau type de vocal"):
     nom = discord.ui.TextInput(label="Nom du type", placeholder="Duo", max_length=50)
     limite = discord.ui.TextInput(label="Limite de membres (0 = illimité)", default="0", max_length=2)
-    modifiable = discord.ui.TextInput(label="Modifiable par le créateur ? (oui/non)", default="non", max_length=3)
+    modifiable_nom = discord.ui.TextInput(label="Le nom est modifiable ? (oui/non)", default="non", max_length=3)
+    modifiable_limite = discord.ui.TextInput(label="La limite est modifiable ? (oui/non)", default="non", max_length=3)
     format_nom = discord.ui.TextInput(
         label="Format du nom ({pseudo} et {type})",
         default="🔊 {type} de {pseudo}",
@@ -347,10 +451,16 @@ class TypeModal(discord.ui.Modal, title="Nouveau type de vocal"):
             await interaction.response.send_message("❌ La limite doit être un nombre entier.", ephemeral=True)
             return
 
-        modifiable_val = self.modifiable.value.strip().lower() in ("oui", "yes", "true", "1")
+        modifiable_nom_val = self.modifiable_nom.value.strip().lower() in ("oui", "yes", "true", "1")
+        modifiable_limite_val = self.modifiable_limite.value.strip().lower() in ("oui", "yes", "true", "1")
         format_val = self.format_nom.value.strip() or "🔊 {type} de {pseudo}"
 
-        gconf["types"][nom_val] = {"limite": limite_val, "modifiable": modifiable_val, "format_nom": format_val}
+        gconf["types"][nom_val] = {
+            "limite": limite_val,
+            "modifiable_nom": modifiable_nom_val,
+            "modifiable_limite": modifiable_limite_val,
+            "format_nom": format_val,
+        }
         sauvegarder_configuration()
 
         vue = VueConfig(self.guild_id, self.auteur_id)
@@ -562,52 +672,9 @@ async def vocal_config(interaction: discord.Interaction):
     vue.message = await interaction.original_response()
 
 
-# ── /vocal renommer (membre) ────────────────────────────────
-@groupe_vocal.command(name="renommer", description="Renomme ton vocal temporaire (si autorisé)")
-@app_commands.describe(nouveau_nom="Nouveau nom du vocal")
-async def vocal_renommer(interaction: discord.Interaction, nouveau_nom: str):
-    gconf = config_serveur(interaction.guild_id)
-    salon = interaction.user.voice.channel if interaction.user.voice else None
-    info = gconf["temp_channels"].get(str(salon.id)) if salon else None
-
-    if not info:
-        await interaction.response.send_message("❌ Tu dois être dans un vocal temporaire.", ephemeral=True)
-        return
-    if info["owner_id"] != interaction.user.id:
-        await interaction.response.send_message("❌ Seul le créateur du vocal peut le modifier.", ephemeral=True)
-        return
-    type_info = gconf["types"].get(info["type"])
-    if not type_info or not type_info.get("modifiable"):
-        await interaction.response.send_message("❌ Ce type de vocal ne peut pas être personnalisé.", ephemeral=True)
-        return
-
-    await salon.edit(name=nouveau_nom[:100])
-    await interaction.response.send_message(f"✅ Vocal renommé en **{nouveau_nom}**.", ephemeral=True)
-
-
-# ── /vocal limite (membre) ──────────────────────────────────
-@groupe_vocal.command(name="limite", description="Change la limite de membres de ton vocal temporaire (si autorisé)")
-@app_commands.describe(nombre="Nouvelle limite (0 = illimité)")
-async def vocal_limite(interaction: discord.Interaction, nombre: app_commands.Range[int, 0, 99]):
-    gconf = config_serveur(interaction.guild_id)
-    salon = interaction.user.voice.channel if interaction.user.voice else None
-    info = gconf["temp_channels"].get(str(salon.id)) if salon else None
-
-    if not info:
-        await interaction.response.send_message("❌ Tu dois être dans un vocal temporaire.", ephemeral=True)
-        return
-    if info["owner_id"] != interaction.user.id:
-        await interaction.response.send_message("❌ Seul le créateur du vocal peut le modifier.", ephemeral=True)
-        return
-    type_info = gconf["types"].get(info["type"])
-    if not type_info or not type_info.get("modifiable"):
-        await interaction.response.send_message("❌ Ce type de vocal ne peut pas être personnalisé.", ephemeral=True)
-        return
-
-    await salon.edit(user_limit=nombre)
-    await interaction.response.send_message(
-        f"✅ Limite mise à jour : **{nombre if nombre else 'illimitée'}**.", ephemeral=True
-    )
+# ── /vocal renommer et /vocal limite ────────────────────────
+# Retirés : ces actions se font désormais via le panneau de boutons
+# envoyé automatiquement dans chaque vocal temporaire créé.
 
 # ═══════════════════════════════════════════════════════════
 #  PANEL D'INVITATION
@@ -638,32 +705,22 @@ CMDS = {
         "details": (
             "Ouvre un panneau avec des boutons pour tout gérer sans taper d'autres commandes : "
             "créer/supprimer un type, créer/supprimer un hub. Un formulaire s'ouvre pour les infos "
-            "à saisir (nom, limite...), et un menu déroulant pour choisir un salon existant.\n\n"
+            "à saisir (nom, limite, si le nom et/ou la limite du vocal seront modifiables...), et un "
+            "menu déroulant pour choisir un salon existant.\n\n"
             "**Permission requise :** Gérer les salons"
         ),
     },
-    "vocal renommer": {
-        "emoji": "✏️",
-        "titre": "/vocal renommer",
+    "panneau vocal": {
+        "emoji": "🎛️",
+        "titre": "Panneau dans ton vocal",
         "categorie": "Membres",
-        "desc": "Renomme ton vocal temporaire.",
+        "desc": "Gère ton vocal temporaire directement depuis ses boutons.",
         "details": (
-            "Utilisable uniquement si tu es dans le vocal temporaire que tu as créé, "
-            "et si le type autorise la modification (réglé par le staff).\n\n"
-            "**Options**\n"
-            "`nouveau_nom` — Nouveau nom du vocal"
-        ),
-    },
-    "vocal limite": {
-        "emoji": "👥",
-        "titre": "/vocal limite",
-        "categorie": "Membres",
-        "desc": "Change la limite de membres de ton vocal temporaire.",
-        "details": (
-            "Utilisable uniquement si tu es dans le vocal temporaire que tu as créé, "
-            "et si le type autorise la modification (réglé par le staff).\n\n"
-            "**Options**\n"
-            "`nombre` — Nouvelle limite (0 = illimité)"
+            "Dès qu'un vocal temporaire est créé, un message avec deux boutons apparaît dans son "
+            "chat : **✏️ Renommer** et **👥 Limite**.\n\n"
+            "Chaque bouton n'est utilisable que si le staff a autorisé cette modification pour ce "
+            "type de vocal (réglable indépendamment pour le nom et pour la limite via `/vocal config`), "
+            "et uniquement par le créateur du vocal."
         ),
     },
 }
@@ -682,10 +739,7 @@ def embed_apercu() -> discord.Embed:
     )
     embed.add_field(
         name="👤 Membres",
-        value=(
-            "`/vocal renommer` — Renomme ton vocal\n"
-            "`/vocal limite` — Change la limite de ton vocal"
-        ),
+        value="🎛️ Un panneau de boutons (renommer / limite) apparaît directement dans chaque vocal créé.",
         inline=False,
     )
     embed.set_footer(text="Vocaux temporaires • Menu valable 3 minutes")
