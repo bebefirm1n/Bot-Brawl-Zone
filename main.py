@@ -342,8 +342,7 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         print("MESSAGE ENVOYÉ")
     except Exception as e:
         print("ERREUR :", type(e).__name__, e)
-        
-view.message = msg
+        view.message = msg
 
     # ── Quitte un vocal temporaire → suppression si vide ────
     if before.channel and str(before.channel.id) in gconf["temp_channels"]:
