@@ -778,7 +778,8 @@ class InviteView(discord.ui.View):
 
         self.add_item(
             discord.ui.Button(
-                label="<:love:1486416128254152826> Inviter Beflow",
+                label="Inviter Beflow",
+                emoji="<:love:1486416128254152826>",
                 style=discord.ButtonStyle.link,
                 url=LIEN_INVITATION,
             )
