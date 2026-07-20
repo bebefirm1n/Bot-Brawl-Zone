@@ -21,7 +21,7 @@ TOKEN = os.getenv("TOKEN_BOT")
 LIEN_INVITATION = (
     "https://discord.com/oauth2/authorize?"
     "client_id=1495103873373704472"
-    "&permissions=4785076768427024"
+    "&permissions=8"
     "&integration_type=0"
     "&scope=bot+applications.commands"
 )
