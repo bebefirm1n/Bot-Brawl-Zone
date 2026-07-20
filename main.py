@@ -776,13 +776,13 @@ class InviteView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    self.add_item(
-    discord.ui.Button(
-        label="🤖 Inviter Beflow",
-        style=discord.ButtonStyle.link,
-        url=LIEN_INVITATION,
-    )
-)
+        self.add_item(
+            discord.ui.Button(
+                label="🤖 Inviter Beflow",
+                style=discord.ButtonStyle.link,
+                url=LIEN_INVITATION,
+            )
+        )
 
 # ═══════════════════════════════════════════════════════════
 #  AIDE — /help avec panel interactif
