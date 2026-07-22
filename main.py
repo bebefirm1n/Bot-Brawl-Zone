@@ -409,16 +409,24 @@ async def creer_vocal_temporaire(interaction: discord.Interaction, membre: disco
         user_limit=type_info["limite"],
     )
 
+    masque_initial = type_info.get("masque_defaut", False)
+
     # Le créateur garde toujours accès à son vocal, même s'il le masque ou le verrouille ensuite
     try:
         await nouveau_salon.set_permissions(membre, view_channel=True, connect=True)
     except discord.HTTPException:
         pass
 
+    if masque_initial:
+        try:
+            await nouveau_salon.set_permissions(interaction.guild.default_role, view_channel=False)
+        except discord.HTTPException:
+            pass
+
     gconf["temp_channels"][str(nouveau_salon.id)] = {
         "owner_id": membre.id,
         "type": nom_type,
-        "masque": False,
+        "masque": masque_initial,
         "verrou": False,
     }
     sauvegarder_configuration()
@@ -439,8 +447,8 @@ async def creer_vocal_temporaire(interaction: discord.Interaction, membre: disco
 
     try:
         await nouveau_salon.send(
-            embed=embed_panel_vocal(nom_type, False, False),
-            view=PanelVocalView(masque=False, verrou=False),
+            embed=embed_panel_vocal(nom_type, masque_initial, False),
+            view=PanelVocalView(masque=masque_initial, verrou=False),
         )
     except discord.HTTPException:
         pass
@@ -533,7 +541,8 @@ groupe_vocal = app_commands.Group(name="vocal", description="Système de vocaux 
 # ═══════════════════════════════════════════════════════════
 def embed_config(gconf: dict) -> discord.Embed:
     types_txt = "\n".join(
-        f"🔊 **{n}** — limite {i['limite'] or '∞'} · nom {'✅' if i.get('modifiable_nom') else '❌'} · limite {'✅' if i.get('modifiable_limite') else '❌'}"
+        f"🔊 **{n}** — limite {i['limite'] or '∞'} · nom {'✅' if i.get('modifiable_nom') else '❌'} · "
+        f"limite {'✅' if i.get('modifiable_limite') else '❌'} · masqué par défaut {'✅' if i.get('masque_defaut') else '❌'}"
         for n, i in gconf["types"].items()
     ) or "_Aucun type créé_"
     hubs_txt = "\n".join(
@@ -577,12 +586,10 @@ class VueBase(discord.ui.View):
                 pass
 
 
-# ── Étape : nouveau type (Modal) ────────────────────────────
+# ── Étape : options du type (boutons oui/non), puis modal pour le texte ─
 class TypeModal(discord.ui.Modal, title="Nouveau type de vocal"):
     nom = discord.ui.TextInput(label="Nom du type", placeholder="Duo", max_length=50)
     limite = discord.ui.TextInput(label="Limite de membres (0 = illimité)", default="0", max_length=2)
-    modifiable_nom = discord.ui.TextInput(label="Le nom est modifiable ? (oui/non)", default="non", max_length=3)
-    modifiable_limite = discord.ui.TextInput(label="La limite est modifiable ? (oui/non)", default="non", max_length=3)
     format_nom = discord.ui.TextInput(
         label="Format du nom ({pseudo} et {type})",
         default="🔊 {type} de {pseudo}",
@@ -590,10 +597,20 @@ class TypeModal(discord.ui.Modal, title="Nouveau type de vocal"):
         required=False,
     )
 
-    def __init__(self, guild_id: int, auteur_id: int):
+    def __init__(
+        self,
+        guild_id: int,
+        auteur_id: int,
+        modifiable_nom: bool,
+        modifiable_limite: bool,
+        masque_defaut: bool,
+    ):
         super().__init__()
         self.guild_id = guild_id
         self.auteur_id = auteur_id
+        self.modifiable_nom = modifiable_nom
+        self.modifiable_limite = modifiable_limite
+        self.masque_defaut = masque_defaut
 
     async def on_submit(self, interaction: discord.Interaction):
         gconf = config_serveur(self.guild_id)
@@ -608,18 +625,97 @@ class TypeModal(discord.ui.Modal, title="Nouveau type de vocal"):
             await interaction.response.send_message("❌ La limite doit être un nombre entier.", ephemeral=True)
             return
 
-        modifiable_nom_val = self.modifiable_nom.value.strip().lower() in ("oui", "yes", "true", "1")
-        modifiable_limite_val = self.modifiable_limite.value.strip().lower() in ("oui", "yes", "true", "1")
         format_val = self.format_nom.value.strip() or "🔊 {type} de {pseudo}"
 
         gconf["types"][nom_val] = {
             "limite": limite_val,
-            "modifiable_nom": modifiable_nom_val,
-            "modifiable_limite": modifiable_limite_val,
+            "modifiable_nom": self.modifiable_nom,
+            "modifiable_limite": self.modifiable_limite,
+            "masque_defaut": self.masque_defaut,
             "format_nom": format_val,
         }
         sauvegarder_configuration()
 
+        vue = VueConfig(self.guild_id, self.auteur_id)
+        await interaction.response.edit_message(embed=embed_config(gconf), view=vue)
+        vue.message = interaction.message
+
+
+class OptionsTypeView(VueBase):
+    """Première étape de création d'un type : options oui/non par boutons.
+    On ne peut pas tout mettre dans le modal (limite de 5 champs texte), donc
+    les bascules oui/non sont réglées ici avant d'ouvrir le formulaire de texte."""
+
+    def __init__(self, guild_id: int, auteur_id: int):
+        super().__init__(guild_id, auteur_id, timeout=180)
+        self.modifiable_nom = False
+        self.modifiable_limite = False
+        self.masque_defaut = False
+        self._construire_boutons()
+
+    def _construire_boutons(self):
+        self.clear_items()
+
+        bouton_nom = discord.ui.Button(
+            label=f"Nom modifiable : {'Oui' if self.modifiable_nom else 'Non'}",
+            style=discord.ButtonStyle.success if self.modifiable_nom else discord.ButtonStyle.secondary,
+            emoji="✏️", row=0,
+        )
+        bouton_nom.callback = self._toggle_nom
+        self.add_item(bouton_nom)
+
+        bouton_limite = discord.ui.Button(
+            label=f"Limite modifiable : {'Oui' if self.modifiable_limite else 'Non'}",
+            style=discord.ButtonStyle.success if self.modifiable_limite else discord.ButtonStyle.secondary,
+            emoji="👥", row=0,
+        )
+        bouton_limite.callback = self._toggle_limite
+        self.add_item(bouton_limite)
+
+        bouton_masque = discord.ui.Button(
+            label=f"Masqué par défaut : {'Oui' if self.masque_defaut else 'Non'}",
+            style=discord.ButtonStyle.success if self.masque_defaut else discord.ButtonStyle.secondary,
+            emoji="🙈", row=1,
+        )
+        bouton_masque.callback = self._toggle_masque
+        self.add_item(bouton_masque)
+
+        bouton_continuer = discord.ui.Button(label="Continuer", style=discord.ButtonStyle.primary, emoji="➡️", row=2)
+        bouton_continuer.callback = self._continuer
+        self.add_item(bouton_continuer)
+
+        bouton_annuler = discord.ui.Button(label="Annuler", style=discord.ButtonStyle.secondary, emoji="✖️", row=2)
+        bouton_annuler.callback = self._annuler
+        self.add_item(bouton_annuler)
+
+    async def _toggle_nom(self, interaction: discord.Interaction):
+        self.modifiable_nom = not self.modifiable_nom
+        self._construire_boutons()
+        await interaction.response.edit_message(view=self)
+
+    async def _toggle_limite(self, interaction: discord.Interaction):
+        self.modifiable_limite = not self.modifiable_limite
+        self._construire_boutons()
+        await interaction.response.edit_message(view=self)
+
+    async def _toggle_masque(self, interaction: discord.Interaction):
+        self.masque_defaut = not self.masque_defaut
+        self._construire_boutons()
+        await interaction.response.edit_message(view=self)
+
+    async def _continuer(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(
+            TypeModal(
+                self.guild_id,
+                self.auteur_id,
+                self.modifiable_nom,
+                self.modifiable_limite,
+                self.masque_defaut,
+            )
+        )
+
+    async def _annuler(self, interaction: discord.Interaction):
+        gconf = config_serveur(self.guild_id)
         vue = VueConfig(self.guild_id, self.auteur_id)
         await interaction.response.edit_message(embed=embed_config(gconf), view=vue)
         vue.message = interaction.message
@@ -870,7 +966,19 @@ class VueConfig(VueBase):
 
     @discord.ui.button(label="Nouveau type", style=discord.ButtonStyle.success, emoji="➕", row=0)
     async def bouton_nouveau_type(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(TypeModal(self.guild_id, self.auteur_id))
+        vue = OptionsTypeView(self.guild_id, self.auteur_id)
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="➕ Nouveau type — options",
+                description=(
+                    "Règle les options ci-dessous, puis clique sur **Continuer** pour saisir "
+                    "le nom, la limite et le format de nom du type."
+                ),
+                color=0xFFD700,
+            ),
+            view=vue,
+        )
+        vue.message = interaction.message
 
     @discord.ui.button(label="Supprimer un type", style=discord.ButtonStyle.danger, emoji="🗑️", row=0)
     async def bouton_supprimer_type(self, interaction: discord.Interaction, button: discord.ui.Button):
