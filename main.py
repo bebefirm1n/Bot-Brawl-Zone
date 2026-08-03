@@ -133,7 +133,7 @@ async def on_ready():
 
     await arbre.sync()
     await bot.change_presence(
-        activity=discord.Activity(type=discord.ActivityType.watching, name="Not Feller & Mitteg & Nadouja")
+        activity=discord.Activity(type=discord.ActivityType.watching, name="Nadouja & Mitteg & Not Feller")
     )
     print(f"[✓] {bot.user} connecté — Slash commands synchronisées.")
 
