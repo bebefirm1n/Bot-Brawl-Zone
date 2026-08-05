@@ -141,6 +141,13 @@ async def on_ready():
 # ═══════════════════════════════════════════════════════════
 #  MENU DE CHOIX DU TYPE DE VOCAL (affiché dans le chat vocal)
 # ═══════════════════════════════════════════════════════════
+def emoji_type(info: dict) -> str:
+    """Emoji configuré pour un type de vocal, avec repli sur 🔊 si aucun n'est défini.
+    Accepte un emoji Unicode classique ou un emoji personnalisé du serveur (collé tel
+    quel depuis le clavier à emojis de Discord dans le champ du formulaire)."""
+    return info.get("emoji") or "🔊"
+
+
 class ChoixTypeSelect(discord.ui.Select):
     def __init__(self, membre: discord.Member, types_disponibles: dict):
         self.membre = membre
@@ -148,7 +155,7 @@ class ChoixTypeSelect(discord.ui.Select):
             discord.SelectOption(
                 label=nom,
                 description=f"Limite : {info['limite']} membre(s)" if info["limite"] else "Limite : illimitée",
-                emoji="🔊",
+                emoji=emoji_type(info),
             )
             for nom, info in list(types_disponibles.items())[:25]
         ]
@@ -259,7 +266,7 @@ class LimiteVocalModal(discord.ui.Modal, title="Changer la limite"):
         )
 
 
-def embed_panel_vocal(type_nom: str, masque: bool, verrou: bool) -> discord.Embed:
+def embed_panel_vocal(type_nom: str, masque: bool, verrou: bool, emoji: str = "🔊") -> discord.Embed:
     embed = discord.Embed(
         title="🎛️ Gestion de ton vocal",
         description=(
@@ -268,10 +275,11 @@ def embed_panel_vocal(type_nom: str, masque: bool, verrou: bool) -> discord.Embe
         ),
         color=0xFFD700,
     )
-    embed.add_field(name="Type", value=type_nom, inline=True)
+    embed.add_field(name="Type", value=f"{emoji} {type_nom}", inline=True)
     embed.add_field(name="Visibilité", value="🙈 Masqué" if masque else "👁️ Visible", inline=True)
     embed.add_field(name="Accès", value="🔒 Verrouillé" if verrou else "🔓 Ouvert", inline=True)
     return embed
+
 
 
 class PanelVocalView(discord.ui.View):
@@ -375,7 +383,10 @@ class PanelVocalView(discord.ui.View):
 
         nouvelle_vue = PanelVocalView(masque=nouvel_etat, verrou=info.get("verrou", False))
         await interaction.response.edit_message(
-            embed=embed_panel_vocal(info["type"], nouvel_etat, info.get("verrou", False)),
+            embed=embed_panel_vocal(
+                info["type"], nouvel_etat, info.get("verrou", False),
+                emoji=emoji_type(gconf["types"].get(info["type"], {})),
+            ),
             view=nouvelle_vue,
         )
 
@@ -403,7 +414,10 @@ class PanelVocalView(discord.ui.View):
 
         nouvelle_vue = PanelVocalView(masque=info.get("masque", False), verrou=nouvel_etat)
         await interaction.response.edit_message(
-            embed=embed_panel_vocal(info["type"], info.get("masque", False), nouvel_etat),
+            embed=embed_panel_vocal(
+                info["type"], info.get("masque", False), nouvel_etat,
+                emoji=emoji_type(gconf["types"].get(info["type"], {})),
+            ),
             view=nouvelle_vue,
         )
 
@@ -473,7 +487,7 @@ async def creer_vocal_temporaire(interaction: discord.Interaction, membre: disco
 
     try:
         await nouveau_salon.send(
-            embed=embed_panel_vocal(nom_type, masque_initial, False),
+            embed=embed_panel_vocal(nom_type, masque_initial, False, emoji=emoji_type(type_info)),
             view=PanelVocalView(masque=masque_initial, verrou=False),
         )
     except discord.HTTPException:
@@ -567,7 +581,7 @@ groupe_vocal = app_commands.Group(name="vocal", description="Système de vocaux 
 # ═══════════════════════════════════════════════════════════
 def embed_config(gconf: dict) -> discord.Embed:
     types_txt = "\n".join(
-        f"🔊 **{n}** — limite {i['limite'] or '∞'} · nom {'✅' if i.get('modifiable_nom') else '❌'} · "
+        f"{emoji_type(i)} **{n}** — limite {i['limite'] or '∞'} · nom {'✅' if i.get('modifiable_nom') else '❌'} · "
         f"limite {'✅' if i.get('modifiable_limite') else '❌'} · masqué par défaut {'✅' if i.get('masque_defaut') else '❌'}"
         for n, i in gconf["types"].items()
     ) or "_Aucun type créé_"
@@ -624,6 +638,11 @@ class VueBase(discord.ui.View):
 class TypeModal(discord.ui.Modal, title="Nouveau type de vocal"):
     nom = discord.ui.TextInput(label="Nom du type", placeholder="Duo", max_length=50)
     limite = discord.ui.TextInput(label="Limite de membres (0 = illimité)", default="0", max_length=2)
+    emoji = discord.ui.TextInput(
+        label="Emoji (colle un emoji Discord, perso ou non)",
+        required=False,
+        max_length=100,
+    )
     format_nom = discord.ui.TextInput(
         label="Format du nom ({pseudo} et {type})",
         default="🔊 {type} de {pseudo}",
@@ -638,19 +657,34 @@ class TypeModal(discord.ui.Modal, title="Nouveau type de vocal"):
         modifiable_nom: bool,
         modifiable_limite: bool,
         masque_defaut: bool,
+        type_existant: str | None = None,
+        gconf: dict | None = None,
     ):
-        super().__init__()
+        titre = f"Modifier « {type_existant} »"[:45] if type_existant else "Nouveau type de vocal"
+        super().__init__(title=titre)
         self.guild_id = guild_id
         self.auteur_id = auteur_id
         self.modifiable_nom = modifiable_nom
         self.modifiable_limite = modifiable_limite
         self.masque_defaut = masque_defaut
+        self.type_existant = type_existant
+
+        if type_existant and gconf:
+            info = gconf["types"].get(type_existant, {})
+            self.nom.default = type_existant
+            self.limite.default = str(info.get("limite", 0))
+            self.emoji.default = info.get("emoji", "")
+            self.format_nom.default = info.get("format_nom", "🔊 {type} de {pseudo}")
 
     async def on_submit(self, interaction: discord.Interaction):
         gconf = config_serveur(self.guild_id)
         nom_val = self.nom.value.strip()
 
-        if any(t.lower() == nom_val.lower() for t in gconf["types"]):
+        conflit = any(
+            t.lower() == nom_val.lower() and t != self.type_existant
+            for t in gconf["types"]
+        )
+        if conflit:
             await interaction.response.send_message(f"❌ Le type **{nom_val}** existe déjà.", ephemeral=True)
             return
         try:
@@ -660,6 +694,15 @@ class TypeModal(discord.ui.Modal, title="Nouveau type de vocal"):
             return
 
         format_val = self.format_nom.value.strip() or "🔊 {type} de {pseudo}"
+        emoji_val = self.emoji.value.strip()
+
+        # Si le type est renommé, on met à jour les hubs qui le référencent
+        if self.type_existant and self.type_existant != nom_val:
+            gconf["types"].pop(self.type_existant, None)
+            for hub_info in gconf["hubs"].values():
+                types_hub = hub_info.get("types", [])
+                if self.type_existant in types_hub:
+                    types_hub[types_hub.index(self.type_existant)] = nom_val
 
         gconf["types"][nom_val] = {
             "limite": limite_val,
@@ -667,6 +710,7 @@ class TypeModal(discord.ui.Modal, title="Nouveau type de vocal"):
             "modifiable_limite": self.modifiable_limite,
             "masque_defaut": self.masque_defaut,
             "format_nom": format_val,
+            "emoji": emoji_val,
         }
         sauvegarder_configuration()
 
@@ -676,15 +720,24 @@ class TypeModal(discord.ui.Modal, title="Nouveau type de vocal"):
 
 
 class OptionsTypeView(VueBase):
-    """Première étape de création d'un type : options oui/non par boutons.
+    """Première étape de création/édition d'un type : options oui/non par boutons.
     On ne peut pas tout mettre dans le modal (limite de 5 champs texte), donc
     les bascules oui/non sont réglées ici avant d'ouvrir le formulaire de texte."""
 
-    def __init__(self, guild_id: int, auteur_id: int):
+    def __init__(
+        self,
+        guild_id: int,
+        auteur_id: int,
+        type_existant: str | None = None,
+        modifiable_nom: bool = False,
+        modifiable_limite: bool = False,
+        masque_defaut: bool = False,
+    ):
         super().__init__(guild_id, auteur_id, timeout=180)
-        self.modifiable_nom = False
-        self.modifiable_limite = False
-        self.masque_defaut = False
+        self.type_existant = type_existant
+        self.modifiable_nom = modifiable_nom
+        self.modifiable_limite = modifiable_limite
+        self.masque_defaut = masque_defaut
         self._construire_boutons()
 
     def _construire_boutons(self):
@@ -738,6 +791,7 @@ class OptionsTypeView(VueBase):
         await interaction.response.edit_message(view=self)
 
     async def _continuer(self, interaction: discord.Interaction):
+        gconf = config_serveur(self.guild_id)
         await interaction.response.send_modal(
             TypeModal(
                 self.guild_id,
@@ -745,6 +799,8 @@ class OptionsTypeView(VueBase):
                 self.modifiable_nom,
                 self.modifiable_limite,
                 self.masque_defaut,
+                type_existant=self.type_existant,
+                gconf=gconf,
             )
         )
 
@@ -759,7 +815,7 @@ class OptionsTypeView(VueBase):
 class SelectTypeASupprimer(discord.ui.Select):
     def __init__(self, guild_id: int, gconf: dict):
         self.guild_id = guild_id
-        options = [discord.SelectOption(label=n, value=n, emoji="🔊") for n in gconf["types"]][:25]
+        options = [discord.SelectOption(label=n, value=n, emoji=emoji_type(i)) for n, i in gconf["types"].items()][:25]
         super().__init__(placeholder="Choisis le type à supprimer...", options=options, min_values=1, max_values=1)
 
     async def callback(self, interaction: discord.Interaction):
@@ -778,6 +834,56 @@ class VueSupprimerType(VueBase):
     def __init__(self, guild_id: int, auteur_id: int, gconf: dict):
         super().__init__(guild_id, auteur_id)
         self.add_item(SelectTypeASupprimer(guild_id, gconf))
+
+    @discord.ui.button(label="Retour", style=discord.ButtonStyle.secondary, emoji="⬅️", row=1)
+    async def retour(self, interaction: discord.Interaction, button: discord.ui.Button):
+        gconf = config_serveur(self.guild_id)
+        vue = VueConfig(self.guild_id, self.auteur_id)
+        await interaction.response.edit_message(embed=embed_config(gconf), view=vue)
+        vue.message = interaction.message
+
+
+# ── Étape : modifier un type existant ───────────────────────
+class SelectTypeAModifier(discord.ui.Select):
+    def __init__(self, guild_id: int, gconf: dict):
+        self.guild_id = guild_id
+        options = [discord.SelectOption(label=n, value=n, emoji=emoji_type(i)) for n, i in gconf["types"].items()][:25]
+        super().__init__(placeholder="Choisis le type à modifier...", options=options, min_values=1, max_values=1)
+
+    async def callback(self, interaction: discord.Interaction):
+        gconf = config_serveur(self.guild_id)
+        nom = self.values[0]
+        info = gconf["types"].get(nom)
+        if not info:
+            await interaction.response.send_message("❌ Ce type n'existe plus.", ephemeral=True)
+            return
+
+        vue = OptionsTypeView(
+            self.guild_id,
+            self.view.auteur_id,
+            type_existant=nom,
+            modifiable_nom=info.get("modifiable_nom", False),
+            modifiable_limite=info.get("modifiable_limite", False),
+            masque_defaut=info.get("masque_defaut", False),
+        )
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title=f"✏️ Modifier « {nom} » — options",
+                description=(
+                    "Ajuste les options ci-dessous, puis clique sur **Continuer** pour modifier "
+                    "le nom, la limite, l'emoji et le format de nom du type."
+                ),
+                color=0xFFD700,
+            ),
+            view=vue,
+        )
+        vue.message = interaction.message
+
+
+class VueModifierType(VueBase):
+    def __init__(self, guild_id: int, auteur_id: int, gconf: dict):
+        super().__init__(guild_id, auteur_id)
+        self.add_item(SelectTypeAModifier(guild_id, gconf))
 
     @discord.ui.button(label="Retour", style=discord.ButtonStyle.secondary, emoji="⬅️", row=1)
     async def retour(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1241,10 +1347,23 @@ class VueConfig(VueBase):
                 title="➕ Nouveau type — options",
                 description=(
                     "Règle les options ci-dessous, puis clique sur **Continuer** pour saisir "
-                    "le nom, la limite et le format de nom du type."
+                    "le nom, la limite, l'emoji et le format de nom du type."
                 ),
                 color=0xFFD700,
             ),
+            view=vue,
+        )
+        vue.message = interaction.message
+
+    @discord.ui.button(label="Modifier un type", style=discord.ButtonStyle.primary, emoji="✏️", row=0)
+    async def bouton_modifier_type(self, interaction: discord.Interaction, button: discord.ui.Button):
+        gconf = config_serveur(self.guild_id)
+        if not gconf["types"]:
+            await interaction.response.send_message("❌ Aucun type à modifier.", ephemeral=True)
+            return
+        vue = VueModifierType(self.guild_id, self.auteur_id, gconf)
+        await interaction.response.edit_message(
+            embed=discord.Embed(title="✏️ Modifier un type", description="Choisis le type à modifier.", color=0xFFD700),
             view=vue,
         )
         vue.message = interaction.message
@@ -1389,10 +1508,30 @@ CMDS = {
         "desc": "Panneau de configuration interactif tout-en-un.",
         "details": (
             "Ouvre un panneau avec des boutons pour tout gérer sans taper d'autres commandes : "
-            "créer/supprimer un type (dont l'option **masqué par défaut**), créer/supprimer un hub, "
-            "configurer un hub (types disponibles + catégorie cible), gérer une catégorie Discord "
-            "(renommage, accès par rôle) et gérer la liste des mots interdits.\n\n"
+            "créer/modifier/supprimer un type (nom, limite, emoji, format de nom, options), "
+            "créer/supprimer un hub, configurer un hub (types disponibles + catégorie cible), "
+            "gérer une catégorie Discord (renommage, accès par rôle) et gérer la liste des mots "
+            "interdits.\n\n"
             "**Permission requise :** Gérer les salons"
+        ),
+    },
+    "types de vocaux": {
+        "emoji": "🔊",
+        "titre": "Créer / modifier un type",
+        "categorie": "Staff",
+        "desc": "Configure le nom, l'emoji, la limite et les options d'un type de vocal.",
+        "details": (
+            "**Nouveau type** et **Modifier un type** ouvrent le même formulaire en deux temps : "
+            "d'abord les options oui/non (nom modifiable, limite modifiable, masqué par défaut), "
+            "puis le nom, la limite, l'emoji et le format de nom.\n\n"
+            "Le champ **Emoji** accepte un emoji Unicode classique ou un emoji personnalisé du "
+            "serveur — colle-le simplement dans le champ. Il apparaît dans le menu de choix du "
+            "type et dans le panneau du vocal créé.\n\n"
+            "Modifier le nom d'un type met automatiquement à jour les hubs qui le référencent.\n\n"
+            "**Limite Discord :** un emoji personnalisé peut apparaître dans les menus et messages "
+            "du bot, mais jamais dans le nom du salon vocal lui-même — Discord n'affiche que les "
+            "emojis Unicode classiques dans les noms de salons et de catégories, quel que soit le "
+            "bot utilisé."
         ),
     },
     "configurer un hub": {
@@ -1419,10 +1558,7 @@ CMDS = {
             "Choisis une catégorie existante pour la renommer, ou pour la restreindre à un ou "
             "plusieurs rôles : la catégorie et les vocaux qu'elle contient (y compris ceux créés "
             "ensuite via un hub ciblant cette catégorie) deviennent invisibles pour tout le monde "
-            "sauf les rôles choisis. **Retirer la restriction** rétablit l'accès normal du serveur.\n\n"
-            "Discord ne permet pas d'utiliser un emoji personnalisé du serveur dans le nom d'une "
-            "catégorie ou d'un salon — seuls les emojis Unicode classiques (🔊, 📁...) fonctionnent, "
-            "c'est une limite de Discord lui-même."
+            "sauf les rôles choisis. **Retirer la restriction** rétablit l'accès normal du serveur."
         ),
     },
     "mots interdits": {
@@ -1466,6 +1602,7 @@ def embed_apercu() -> discord.Embed:
         name="🛠️ Staff",
         value=(
             "`/vocal config` — ⭐ Panneau interactif tout-en-un\n"
+            "🔊 Créer / modifier un type — nom, emoji, limite, options\n"
             "🔀 Configurer un hub — types disponibles et catégorie cible\n"
             "📁 Gérer une catégorie — renommage et accès par rôle\n"
             "🚫 Mots interdits — bloquer certains mots au renommage"
